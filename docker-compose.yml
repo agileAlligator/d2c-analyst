@@ -1,0 +1,73 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: d2c
+      POSTGRES_PASSWORD: d2c
+      POSTGRES_DB: d2c
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U d2c"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: .
+    command: uvicorn app.api.main:app --host 0.0.0.0 --port 10001 --reload
+    ports:
+      - "10001:10001"
+    environment:
+      DATABASE_URL: postgresql://d2c:d2c@db:5432/d2c
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - .:/app
+
+  ui:
+    build: .
+    command: streamlit run app/ui/streamlit_app.py --server.port 10002 --server.address 0.0.0.0
+    ports:
+      - "10002:10002"
+    environment:
+      DATABASE_URL: postgresql://d2c:d2c@db:5432/d2c
+      API_URL: http://api:10001
+    env_file: .env
+    depends_on:
+      - api
+    volumes:
+      - .:/app
+
+  worker:
+    build: .
+    command: python -m app.ingest.runner --all
+    environment:
+      DATABASE_URL: postgresql://d2c:d2c@db:5432/d2c
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - .:/app
+    profiles: ["ingest"]
+
+  agent:
+    build: .
+    command: python scripts/run_agent.py --merchant demo
+    environment:
+      DATABASE_URL: postgresql://d2c:d2c@db:5432/d2c
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - .:/app
+    profiles: ["agent"]
+
+volumes:
+  postgres_data:

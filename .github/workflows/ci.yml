@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: d2c
+          POSTGRES_PASSWORD: d2c
+          POSTGRES_DB: d2c
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://d2c:d2c@localhost:5432/d2c
+      
+      OPENAI_API_KEY: dummy
+      SHOPIFY_ACCESS_TOKEN: dummy
+      SHOPIFY_SHOP_DOMAIN: test.myshopify.com
+      META_ACCESS_TOKEN: dummy
+      META_AD_ACCOUNT_ID: act_123
+      SHIPROCKET_TOKEN: dummy
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Migrate DB
+        run: python app/warehouse/migrations/create_tables.py
+
+      - name: Seed demo merchants
+        run: |
+          python scripts/seed_demo_merchant.py
+          python scripts/seed_second_merchant.py
+          python scripts/normalize.py --merchant demo
+          python scripts/normalize.py --merchant demo2
+
+      - name: Run tests
+        run: pytest -x -q

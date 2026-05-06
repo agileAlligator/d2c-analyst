@@ -1,0 +1,21 @@
+# secrets
+.env
+
+# internal planning — not for the repo
+MASTER_PLAN.md
+CLAUDE.md
+SESSION.md
+explanation.md
+
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# misc
+.DS_Store
+*.log

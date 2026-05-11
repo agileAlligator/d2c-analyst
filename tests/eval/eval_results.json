@@ -1,0 +1,98 @@
+{
+  "citation_coverage_pct": 100.0,
+  "valid_count": 10,
+  "total_questions": 10,
+  "total_cited_numbers": 20,
+  "results": [
+    {
+      "question": "What was total revenue in the last 30 days?",
+      "description": "Basic revenue query \u2014 must cite a raw_shopify_orders record",
+      "valid": true,
+      "cited_count": 1,
+      "issues": [],
+      "latency_s": 4.3,
+      "tool_calls": 1
+    },
+    {
+      "question": "How much did we spend on Meta Ads in the last 14 days?",
+      "description": "Ad spend query \u2014 must cite raw_meta_insights",
+      "valid": true,
+      "cited_count": 1,
+      "issues": [],
+      "latency_s": 1.94,
+      "tool_calls": 1
+    },
+    {
+      "question": "What is our RTO rate by courier in the last 30 days?",
+      "description": "RTO rate grouped by courier \u2014 must cite raw_shiprocket_shipments",
+      "valid": true,
+      "cited_count": 4,
+      "issues": [],
+      "latency_s": 2.93,
+      "tool_calls": 1
+    },
+    {
+      "question": "What is our CAC (customer acquisition cost) in the last 30 d",
+      "description": "CAC = ad spend / orders \u2014 must cite both spend and revenue sources",
+      "valid": true,
+      "cited_count": 1,
+      "issues": [],
+      "latency_s": 1.96,
+      "tool_calls": 1
+    },
+    {
+      "question": "Which orders had negative contribution margin last month?",
+      "description": "Contribution margin \u2014 tests the Shopify\u2194Shiprocket join",
+      "valid": true,
+      "cited_count": 4,
+      "issues": [],
+      "latency_s": 5.04,
+      "tool_calls": 2
+    },
+    {
+      "question": "Compare revenue between the last 7 days and the last 30 days",
+      "description": "Period comparison \u2014 tests the compare tool and dual citations",
+      "valid": true,
+      "cited_count": 3,
+      "issues": [],
+      "latency_s": 2.34,
+      "tool_calls": 1
+    },
+    {
+      "question": "What is our average order value in the last 30 days?",
+      "description": "AOV from revenue query",
+      "valid": true,
+      "cited_count": 3,
+      "issues": [],
+      "latency_s": 5.87,
+      "tool_calls": 3
+    },
+    {
+      "question": "Which courier has the highest RTO rate?",
+      "description": "Courier ranking \u2014 answer must name a courier with cited rate",
+      "valid": true,
+      "cited_count": 1,
+      "issues": [],
+      "latency_s": 1.61,
+      "tool_calls": 1
+    },
+    {
+      "question": "What was our total ad spend vs total revenue in the last 14 ",
+      "description": "Multi-metric ROAS calculation \u2014 both numbers must be cited",
+      "valid": true,
+      "cited_count": 2,
+      "issues": [],
+      "latency_s": 2.56,
+      "tool_calls": 2
+    },
+    {
+      "question": "Show me the top 5 orders by revenue in the last 30 days.",
+      "description": "SQL tool fallback \u2014 may use sql tool when metric catalog isn't enough",
+      "valid": true,
+      "cited_count": 0,
+      "issues": [],
+      "latency_s": 5.49,
+      "tool_calls": 2
+    }
+  ]
+}

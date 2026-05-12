@@ -158,7 +158,9 @@ Why this approach over alternatives: RouteLLM (trained classifier) requires labe
 
 ## 5. Agent — what it does, why this one
 
-**Why Margin Watch:** it is the only agent that can simultaneously touch all three connectors and express its reasoning in rupees. Revenue without logistics is half the picture; logistics without spend is the other half. Only the combination — Shopify revenue + Shiprocket RTO + Meta spend — lets you say "this courier is destroying your margin, this campaign is wasting your budget, this SKU should cost more." That's a ₹ number a founder can act on, not a dashboard they have to interpret. On the seed merchant, the agent surfaces ~₹24,200/month. At 10k merchants × even ₹5,000/month average = ₹50 crore/month in founder-legible savings — that's the product.
+**Why Margin Watch:** it is the only agent where all three connectors are load-bearing simultaneously — remove any one and the proposals degrade. The courier switch needs Shiprocket RTO data. The ad pause needs Meta spend. The price raise needs Shopify revenue *and* Shiprocket shipping cost to compute the actual margin. That cross-connector dependency is what makes it a real test of the universal model, not a single-source query with an LLM wrapper.
+
+The honest concession: the ₹23,717 ad-pause proposal fires because ROAS is 0.27x — a number any spreadsheet would catch. The agent's value isn't finding obvious disasters; it's doing this continuously across thousands of merchants, linking logistics to revenue to spend in a way no existing D2C tool does natively, and expressing every claim with a citation back to a source row. On the seed merchant it surfaces ~₹24,200/month. At 10k merchants that compounds — that's the product.
 
 Runs every 6 hours (cron in Docker Compose; manually triggerable via `make agent`).
 

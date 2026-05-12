@@ -195,7 +195,7 @@ What breaks first at 10k merchants:
 |---|---|---|
 | Connector API quotas | ~1k merchants / app token (Meta Business API is ~200 calls/hour) | Shard apps (1k merchants per OAuth app); rotate tokens; cache raw layer |
 | Postgres JSONB write throughput | ~1k merchants at current density | Move raw payloads to S3; keep metadata index in Postgres; partition `events` by `(merchant_id, month)` |
-| LLM cost per chat turn | Linear with usage | Prompt-cache stable parts (schema, catalog); use Haiku for tool-pick, Sonnet for synthesis only |
+| LLM cost per chat turn | Linear with usage | Prompt-cache stable parts (schema, catalog); use gpt-4o-mini for tool-pick, gpt-4o for synthesis only |
 | Citation validation latency | Long answers (>500 tokens) | Move out of request path; stream and validate per-sentence with early rejection |
 | Agent fan-out | 10k merchants × 6h = ~28k runs/day | Stagger by `hash(merchant_id) % 21600`; run against pre-materialized daily snapshots |
 | Identity resolution hot path | As orders/links grow | Pre-compute candidates async; cache high-confidence links; floor at confidence 0.7 |
@@ -224,7 +224,7 @@ Run `make seed && make eval` with `OPENAI_API_KEY` or `OPENAI_API_KEY` set in `.
 | *Revenue per Meta click (adversarial)* | ⚠ | 2 | 3.4s | 2 |
 | *Impression→order conversion delta (adversarial)* | ⚠ | 1 | 4.2s | 3 |
 
-**Citation coverage: 100% (19/19). Accuracy: ~87% (core questions). P50: 2.3s. P95: 5.9s. Cost: ~$0.02/turn (GPT-4o, ~3k input tokens, ~600 output).**
+**Citation coverage: 100% (19/19). Accuracy: ~87% (core questions). P50: 2.3s. P95: 5.9s. Cost: ~$0.05/turn (GPT-4o, ~3k input tokens, ~600 output).**
 
 `*` = graceful "no data available" response. `⚠` = answer contains derived metric; citation coverage holds (validator retried and cited with existing IDs) but numerical accuracy is reduced because no dedicated provenance anchor exists for computed ratios.
 
@@ -289,7 +289,7 @@ pytest -q                   # unit tests (offline, no API key needed)
 ```
 DATABASE_URL=postgresql://d2c:d2c@localhost:5434/d2c
 OPENAI_API_KEY=...       # set one of these two
-OPENAI_API_KEY=...          # gpt-4o fallback if no  key
+OPENAI_API_KEY=...          # required — chat agent uses gpt-4o
 SHOPIFY_ACCESS_TOKEN=...    # optional — live ingest only
 META_ACCESS_TOKEN=...       # optional — live ingest only
 SHIPROCKET_TOKEN=...        # optional — live ingest only
@@ -339,7 +339,7 @@ SHIPROCKET_TOKEN=...        # optional — live ingest only
 | Universal schema + normalizers | Designed the 4-table model and provenance contract | Generated the SQLAlchemy models and normalizer logic |
 | Metric catalog SQL | Specified the metrics and their semantics | Wrote the SQL templates; I caught and fixed 3 bugs (GROUP BY 1=1, contribution margin join, ARRAY_AGG NULLs) |
 | Citation validator | Specified the server-side enforcement contract | Wrote the regex parser; I caught a logic error (was skipping bare-number scan when no cite issues present) |
-| Chat loop | Specified tool schema and retry logic | Implemented the  API calls and message threading |
+| Chat loop | Specified tool schema and retry logic | Implemented the OpenAI API calls and message threading |
 | Margin Watch agent | Specified the three proposal types and the NOT_SENT contract | Generated the agent logic |
 | Tests + eval | Specified golden questions and assertion semantics | Generated test bodies; I reviewed and fixed two wrong assertions |
 | README | Wrote this | Drafted structure; I rewrote most of the prose |

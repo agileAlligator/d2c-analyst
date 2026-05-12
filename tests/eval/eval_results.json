@@ -1,98 +1,214 @@
 {
   "citation_coverage_pct": 100.0,
-  "valid_count": 10,
-  "total_questions": 10,
-  "total_cited_numbers": 20,
+  "accuracy_pct": 100.0,
+  "valid_count": 16,
+  "total_questions": 16,
+  "total_cited_numbers": 35,
+  "accuracy_pass": 25,
+  "accuracy_total": 25,
+  "p50_latency_s": 2.26,
+  "p95_latency_s": 4.29,
   "results": [
     {
       "question": "What was total revenue in the last 30 days?",
-      "description": "Basic revenue query \u2014 must cite a raw_shopify_orders record",
+      "description": "Basic revenue query \u2014 answer must contain ~\u20b941,646",
       "valid": true,
       "cited_count": 1,
       "issues": [],
-      "latency_s": 4.3,
-      "tool_calls": 1
+      "latency_s": 1.73,
+      "tool_calls": 1,
+      "accuracy_checks": [
+        true,
+        true
+      ]
+    },
+    {
+      "question": "What was total revenue in the last 7 days?",
+      "description": "Short-window revenue \u2014 answer must contain ~\u20b911,491",
+      "valid": true,
+      "cited_count": 1,
+      "issues": [],
+      "latency_s": 1.77,
+      "tool_calls": 1,
+      "accuracy_checks": [
+        true
+      ]
+    },
+    {
+      "question": "How much did we spend on Meta Ads in the last 30 days?",
+      "description": "Ad spend query \u2014 must cite raw_meta_insights, ~\u20b9172,211",
+      "valid": true,
+      "cited_count": 1,
+      "issues": [],
+      "latency_s": 2.49,
+      "tool_calls": 1,
+      "accuracy_checks": [
+        true
+      ]
     },
     {
       "question": "How much did we spend on Meta Ads in the last 14 days?",
-      "description": "Ad spend query \u2014 must cite raw_meta_insights",
+      "description": "14d ad spend \u2014 partial window",
       "valid": true,
       "cited_count": 1,
       "issues": [],
-      "latency_s": 1.94,
-      "tool_calls": 1
+      "latency_s": 2.08,
+      "tool_calls": 1,
+      "accuracy_checks": [
+        true,
+        true
+      ]
+    },
+    {
+      "question": "Which Meta campaign spent the most in the last 30 days?",
+      "description": "Ad spend grouped by campaign \u2014 must name a campaign",
+      "valid": true,
+      "cited_count": 1,
+      "issues": [],
+      "latency_s": 1.58,
+      "tool_calls": 1,
+      "accuracy_checks": [
+        true
+      ]
     },
     {
       "question": "What is our RTO rate by courier in the last 30 days?",
-      "description": "RTO rate grouped by courier \u2014 must cite raw_shiprocket_shipments",
+      "description": "RTO grouped by courier \u2014 must cite shipments, list all couriers",
       "valid": true,
       "cited_count": 4,
       "issues": [],
-      "latency_s": 2.93,
-      "tool_calls": 1
-    },
-    {
-      "question": "What is our CAC (customer acquisition cost) in the last 30 d",
-      "description": "CAC = ad spend / orders \u2014 must cite both spend and revenue sources",
-      "valid": true,
-      "cited_count": 1,
-      "issues": [],
-      "latency_s": 1.96,
-      "tool_calls": 1
-    },
-    {
-      "question": "Which orders had negative contribution margin last month?",
-      "description": "Contribution margin \u2014 tests the Shopify\u2194Shiprocket join",
-      "valid": true,
-      "cited_count": 4,
-      "issues": [],
-      "latency_s": 5.04,
-      "tool_calls": 2
-    },
-    {
-      "question": "Compare revenue between the last 7 days and the last 30 days",
-      "description": "Period comparison \u2014 tests the compare tool and dual citations",
-      "valid": true,
-      "cited_count": 3,
-      "issues": [],
-      "latency_s": 2.34,
-      "tool_calls": 1
-    },
-    {
-      "question": "What is our average order value in the last 30 days?",
-      "description": "AOV from revenue query",
-      "valid": true,
-      "cited_count": 3,
-      "issues": [],
-      "latency_s": 5.87,
-      "tool_calls": 3
+      "latency_s": 2.04,
+      "tool_calls": 1,
+      "accuracy_checks": [
+        true,
+        true
+      ]
     },
     {
       "question": "Which courier has the highest RTO rate?",
-      "description": "Courier ranking \u2014 answer must name a courier with cited rate",
+      "description": "Courier ranking \u2014 BlueDart has 60% RTO rate (highest)",
       "valid": true,
       "cited_count": 1,
       "issues": [],
-      "latency_s": 1.61,
-      "tool_calls": 1
+      "latency_s": 2.26,
+      "tool_calls": 1,
+      "accuracy_checks": [
+        true,
+        true
+      ]
     },
     {
-      "question": "What was our total ad spend vs total revenue in the last 14 ",
-      "description": "Multi-metric ROAS calculation \u2014 both numbers must be cited",
+      "question": "What is my contribution margin per order this week?",
+      "description": "CM per order 7d \u2014 must cite Shopify+Shiprocket join, 5 orders",
+      "valid": true,
+      "cited_count": 10,
+      "issues": [],
+      "latency_s": 4.29,
+      "tool_calls": 1,
+      "accuracy_checks": [
+        true,
+        true
+      ]
+    },
+    {
+      "question": "Which orders had negative contribution margin in the last 7 ",
+      "description": "Negative CM \u2014 order 1063 has \u20b9-8.03 margin",
       "valid": true,
       "cited_count": 2,
       "issues": [],
-      "latency_s": 2.56,
-      "tool_calls": 2
+      "latency_s": 2.93,
+      "tool_calls": 1,
+      "accuracy_checks": [
+        true
+      ]
+    },
+    {
+      "question": "Which orders had negative contribution margin last month?",
+      "description": "Negative CM last month \u2014 tests Shopify\u2194Shiprocket join",
+      "valid": true,
+      "cited_count": 4,
+      "issues": [],
+      "latency_s": 2.97,
+      "tool_calls": 1,
+      "accuracy_checks": [
+        true
+      ]
+    },
+    {
+      "question": "What is our CAC in the last 30 days?",
+      "description": "CAC = total spend / total orders",
+      "valid": true,
+      "cited_count": 1,
+      "issues": [],
+      "latency_s": 1.52,
+      "tool_calls": 1,
+      "accuracy_checks": [
+        true,
+        true
+      ]
+    },
+    {
+      "question": "What was our total ad spend vs total revenue in the last 14 ",
+      "description": "ROAS \u2014 both spend and revenue must be cited",
+      "valid": true,
+      "cited_count": 2,
+      "issues": [],
+      "latency_s": 2.25,
+      "tool_calls": 2,
+      "accuracy_checks": [
+        true,
+        true
+      ]
+    },
+    {
+      "question": "Compare revenue between the last 7 days and the last 30 days",
+      "description": "Period comparison \u2014 tests compare tool, both periods cited",
+      "valid": true,
+      "cited_count": 3,
+      "issues": [],
+      "latency_s": 3.49,
+      "tool_calls": 1,
+      "accuracy_checks": [
+        true,
+        true
+      ]
+    },
+    {
+      "question": "What is our average order value in the last 30 days?",
+      "description": "AOV \u2014 revenue \u00f7 order count",
+      "valid": true,
+      "cited_count": 2,
+      "issues": [],
+      "latency_s": 4.03,
+      "tool_calls": 1,
+      "accuracy_checks": [
+        true,
+        true
+      ]
     },
     {
       "question": "Show me the top 5 orders by revenue in the last 30 days.",
-      "description": "SQL tool fallback \u2014 may use sql tool when metric catalog isn't enough",
+      "description": "SQL tool fallback \u2014 metric catalog isn't enough for ORDER BY",
+      "valid": true,
+      "cited_count": 1,
+      "issues": [],
+      "latency_s": 3.44,
+      "tool_calls": 2,
+      "accuracy_checks": [
+        true
+      ]
+    },
+    {
+      "question": "How many orders do we have in total?",
+      "description": "Entity count \u2014 demo has 80 orders, used for isolation check",
       "valid": true,
       "cited_count": 0,
       "issues": [],
-      "latency_s": 5.49,
-      "tool_calls": 2
+      "latency_s": 1.53,
+      "tool_calls": 1,
+      "accuracy_checks": [
+        true
+      ]
     }
   ]
 }

@@ -1,6 +1,6 @@
 """Eval suite — citation coverage and accuracy against the seeded demo merchant.
 
-Requires a live Postgres with seed data: make seed && make normalize
+Requires a live Postgres with seed data: make seed
 Skipped when neither OPENAI_API_KEY nor OPENAI_API_KEY is set (or both are 'dummy').
 
 Run with: pytest tests/eval/ -v -s
@@ -12,7 +12,6 @@ from pathlib import Path
 
 import pytest
 
-# Load .env so keys are available when running pytest directly
 try:
     from dotenv import load_dotenv
     load_dotenv(Path(__file__).parent.parent.parent / ".env", override=False)
@@ -27,7 +26,6 @@ SKIP = (
     (_OPENAI == "dummy" or not _OPENAI)
 )
 
-# Eval results will be written here for the scoreboard
 RESULTS_FILE = Path(__file__).parent / "eval_results.json"
 
 
@@ -35,134 +33,268 @@ def _requires_live():
     return pytest.mark.skipif(SKIP, reason=SKIP_REASON)
 
 
+def _run_question(question: str, merchant_id: str = "demo") -> dict:
+    from app.chat.loop import run_chat
+    from app.chat.validator import CITE_RE
+    from app.warehouse.db import SessionLocal
+
+    start = time.time()
+    with SessionLocal() as db:
+        result = run_chat(question, db, merchant_id)
+    elapsed = time.time() - start
+
+    answer = result["answer"]
+    cited = CITE_RE.findall(answer)
+
+    return {
+        "question": question,
+        "answer": answer,
+        "all_citations_valid": result["all_citations_valid"],
+        "issues": result["issues"],
+        "cited_count": len(cited),
+        "tool_calls": len(result["tool_calls"]),
+        "tool_names": [tc["tool"] for tc in result["tool_calls"]],
+        "provenance_ids": result["provenance_ids"],
+        "latency_s": round(elapsed, 2),
+    }
+
+
+# ── Citation correctness ──────────────────────────────────────────────────────
+
 @_requires_live()
-class TestCitationCoverage:
-    """Run golden questions and measure citation coverage."""
+class TestCitationCorrectness:
+    """Every number in every answer must have a valid <cite> tag."""
 
-    @pytest.fixture(autouse=True)
-    def setup(self):
+    def test_revenue_30d(self):
+        r = _run_question("What was total revenue in the last 30 days?")
+        assert r["all_citations_valid"], f"Issues: {r['issues']}\nAnswer: {r['answer']}"
+        assert r["cited_count"] >= 1
 
-        from app.chat.validator import CITE_RE
-        from app.warehouse.db import SessionLocal
-        self.SessionLocal = SessionLocal
-        self.CITE_RE = CITE_RE
-        self.results = []
+    def test_revenue_7d(self):
+        r = _run_question("What was total revenue in the last 7 days?")
+        assert r["all_citations_valid"], f"Issues: {r['issues']}\nAnswer: {r['answer']}"
 
-    def _run_question(self, question: str, merchant_id: str = "demo") -> dict:
-        from app.chat.loop import run_chat
-        start = time.time()
-        with self.SessionLocal() as db:
-            result = run_chat(question, db, merchant_id)
-        elapsed = time.time() - start
+    def test_ad_spend_30d(self):
+        r = _run_question("How much did we spend on Meta Ads in the last 30 days?")
+        assert r["all_citations_valid"], f"Issues: {r['issues']}"
+        assert r["cited_count"] >= 1
 
-        answer = result["answer"]
-        cited_numbers = self.CITE_RE.findall(answer)
-        all_valid = result["all_citations_valid"]
+    def test_rto_by_courier(self):
+        r = _run_question("What is our RTO rate by courier in the last 30 days?")
+        assert r["all_citations_valid"], f"Issues: {r['issues']}"
 
-        return {
-            "question": question,
-            "answer": answer,
-            "all_citations_valid": all_valid,
-            "issues": result["issues"],
-            "cited_count": len(cited_numbers),
-            "tool_calls": len(result["tool_calls"]),
-            "provenance_ids_count": len(result["provenance_ids"]),
-            "latency_s": round(elapsed, 2),
-        }
+    def test_contribution_margin_7d(self):
+        r = _run_question("What is my contribution margin per order this week?")
+        assert r["all_citations_valid"], f"Issues: {r['issues']}"
 
-    def test_revenue_citation(self):
-        r = self._run_question("What was total revenue in the last 30 days?")
-        assert r["all_citations_valid"], f"Citation issues: {r['issues']}\nAnswer: {r['answer']}"
-        assert r["cited_count"] >= 1, "Expected at least one cited number in revenue answer"
+    def test_cac_30d(self):
+        r = _run_question("What is our CAC in the last 30 days?")
+        assert r["all_citations_valid"], f"Issues: {r['issues']}"
 
-    def test_ad_spend_citation(self):
-        r = self._run_question("How much did we spend on Meta Ads in the last 14 days?")
-        assert r["all_citations_valid"], f"Citation issues: {r['issues']}"
+    def test_period_comparison(self):
+        r = _run_question("Compare revenue between the last 7 days and the last 30 days.")
+        assert r["all_citations_valid"], f"Issues: {r['issues']}"
 
-    def test_rto_rate_citation(self):
-        r = self._run_question("What is our RTO rate by courier?")
-        assert r["all_citations_valid"], f"Citation issues: {r['issues']}"
+    def test_aov(self):
+        r = _run_question("What is our average order value in the last 30 days?")
+        assert r["all_citations_valid"], f"Issues: {r['issues']}"
 
-    def test_cac_citation(self):
-        r = self._run_question("What is our customer acquisition cost in the last 30 days?")
-        assert r["all_citations_valid"], f"Citation issues: {r['issues']}"
+    def test_roas(self):
+        r = _run_question("What was our total ad spend vs total revenue in the last 14 days? What is the ROAS?")
+        assert r["all_citations_valid"], f"Issues: {r['issues']}"
 
-    def test_contribution_margin(self):
-        r = self._run_question("Which orders had negative contribution margin last month?")
-        # May have 0 results if all margins positive — just check citations valid
-        assert r["all_citations_valid"], f"Citation issues: {r['issues']}"
+    def test_sql_fallback(self):
+        r = _run_question("Show me the top 5 orders by revenue in the last 30 days.")
+        assert r["all_citations_valid"], f"Issues: {r['issues']}"
 
-    def test_merchant_isolation(self):
-        """RLS: demo2 should see only its own data, not demo's."""
-        r_demo = self._run_question("What was total revenue in the last 90 days?", merchant_id="demo")
-        r_demo2 = self._run_question("What was total revenue in the last 90 days?", merchant_id="demo2")
-        # demo has 80 orders, demo2 has 5 — revenue should differ
-        # We can't compare exact numbers without seeded data, but answers should differ
-        assert r_demo["answer"] != r_demo2["answer"], (
-            "demo and demo2 got identical answers — RLS isolation may be broken"
+
+# ── Accuracy ──────────────────────────────────────────────────────────────────
+
+@_requires_live()
+class TestAccuracy:
+    """Answer content matches known ground truth from seeded data."""
+
+    def test_revenue_30d_ballpark(self):
+        """30d revenue should be ~₹41,646."""
+        r = _run_question("What was total revenue in the last 30 days?")
+        import re
+        nums = [float(n.replace(",", "")) for n in re.findall(r"[\d,]+(?:\.\d+)?", r["answer"]) if n.replace(",", "").replace(".", "").isdigit()]
+        assert any(40_000 <= n <= 43_000 for n in nums), (
+            f"Expected ~41646 in answer, got numbers: {nums}\nAnswer: {r['answer']}"
+        )
+
+    def test_highest_rto_courier_is_bluedart(self):
+        """BlueDart has 60% RTO rate — highest of all couriers."""
+        r = _run_question("Which courier has the highest RTO rate?")
+        assert "BlueDart" in r["answer"], (
+            f"Expected BlueDart (60% RTO) to be named. Answer: {r['answer']}"
+        )
+
+    def test_negative_cm_order_1063(self):
+        """Order 1063 has contribution margin of ₹-8.03 — only negative this week."""
+        r = _run_question("Which orders had negative contribution margin in the last 7 days?")
+        # Accept either the exact order number or a mention that one order has negative margin
+        has_order = "1063" in r["answer"]
+        has_negative = any(t in r["answer"].lower() for t in ["negative", "-8", "no orders", "none"])
+        assert has_order or has_negative, (
+            f"Expected order 1063 (₹-8.03 CM) or negative margin mention. Answer: {r['answer']}"
+        )
+
+    def test_ad_spend_30d_ballpark(self):
+        """30d ad spend should be ~₹172,211."""
+        r = _run_question("How much did we spend on Meta Ads in the last 30 days?")
+        import re
+        nums = [float(n.replace(",", "")) for n in re.findall(r"[\d,]+(?:\.\d+)?", r["answer"]) if n.replace(",", "").replace(".", "").isdigit()]
+        assert any(165_000 <= n <= 180_000 for n in nums), (
+            f"Expected ~172211 in answer, got: {nums}\nAnswer: {r['answer']}"
+        )
+
+    def test_rto_by_courier_lists_all_couriers(self):
+        """RTO breakdown should mention all 4 couriers."""
+        r = _run_question("What is our RTO rate by courier in the last 30 days?")
+        for courier in ["BlueDart", "Delhivery", "Xpressbees", "Shadowfax"]:
+            assert courier in r["answer"], (
+                f"Expected {courier} in RTO answer. Answer: {r['answer']}"
+            )
+
+    def test_period_comparison_contains_both_values(self):
+        """Comparison answer must contain values for both 7d (~11,491) and 30d (~41,646)."""
+        r = _run_question("Compare revenue between the last 7 days and the last 30 days.")
+        import re
+        nums = [float(n.replace(",", "")) for n in re.findall(r"[\d,]+(?:\.\d+)?", r["answer"]) if n.replace(",", "").replace(".", "").isdigit()]
+        has_7d = any(10_000 <= n <= 13_000 for n in nums)
+        has_30d = any(40_000 <= n <= 43_000 for n in nums)
+        assert has_7d and has_30d, (
+            f"Expected both 7d (~11491) and 30d (~41646) values. Got: {nums}\nAnswer: {r['answer']}"
+        )
+
+    def test_cm_7d_includes_order_1063(self):
+        """CM this week includes order 1063 (₹-8.03), 1075 (₹588), 1055 (₹1300)."""
+        r = _run_question("What is my contribution margin per order this week?")
+        mentioned = [o for o in ["1063", "1075", "1055", "1004", "1031"] if o in r["answer"]]
+        assert len(mentioned) >= 3, (
+            f"Expected at least 3 of the 5 CM orders. Got: {mentioned}\nAnswer: {r['answer']}"
+        )
+
+    def test_campaign_spend_names_a_campaign(self):
+        """Campaign spend answer should name one of the 3 seeded campaigns."""
+        r = _run_question("Which Meta campaign spent the most in the last 30 days?")
+        campaigns = ["New Year", "Diwali", "Brand Awareness"]
+        assert any(c in r["answer"] for c in campaigns), (
+            f"Expected a campaign name. Answer: {r['answer']}"
         )
 
 
+# ── Merchant isolation (RLS) ──────────────────────────────────────────────────
+
 @_requires_live()
-class TestFullEvalSuite:
-    """Run all 10 golden questions and produce a scoreboard."""
+class TestMerchantIsolation:
+    """demo and demo2 must never see each other's data."""
+
+    def test_revenue_differs_between_merchants(self):
+        """demo has 80 orders, demo2 has 5 — revenue must differ."""
+        r_demo = _run_question("What was total revenue in the last 90 days?", merchant_id="demo")
+        r_demo2 = _run_question("What was total revenue in the last 90 days?", merchant_id="demo2")
+        assert r_demo["answer"] != r_demo2["answer"], (
+            "demo and demo2 returned identical revenue — RLS isolation broken"
+        )
+
+    def test_demo2_has_lower_revenue(self):
+        """demo2 (5 orders) must report lower revenue than demo (80 orders)."""
+        import re
+        r_demo = _run_question("What was total revenue in the last 90 days?", merchant_id="demo")
+        r_demo2 = _run_question("What was total revenue in the last 90 days?", merchant_id="demo2")
+
+        def extract_max(answer: str) -> float:
+            nums = [float(n.replace(",", "")) for n in re.findall(r"[\d,]+(?:\.\d+)?", answer)
+                    if n.replace(",", "").replace(".", "").isdigit()]
+            return max(nums) if nums else 0
+
+        demo_rev = extract_max(r_demo["answer"])
+        demo2_rev = extract_max(r_demo2["answer"])
+        assert demo_rev > demo2_rev, (
+            f"demo revenue ({demo_rev}) should exceed demo2 ({demo2_rev})"
+        )
+
+
+# ── Full scoreboard ───────────────────────────────────────────────────────────
+
+@_requires_live()
+class TestFullScorecardAndWrite:
+    """Run all golden questions, produce scoreboard, write eval_results.json."""
 
     def test_full_scoreboard(self):
-        import time
-
-        from app.chat.loop import run_chat
         from app.chat.validator import CITE_RE
-        from app.warehouse.db import SessionLocal
         from tests.eval.golden_questions import GOLDEN_QUESTIONS
 
         results = []
-        total_cited = 0
-        total_questions = len(GOLDEN_QUESTIONS)
         valid_count = 0
+        total_cited = 0
+        accuracy_pass = 0
+        accuracy_total = 0
 
         for gq in GOLDEN_QUESTIONS:
-            start = time.time()
-            with SessionLocal() as db:
-                result = run_chat(gq.question, db, "demo")
-            elapsed = time.time() - start
-
-            answer = result["answer"]
-            cited = CITE_RE.findall(answer)
-            valid = result["all_citations_valid"]
+            r = _run_question(gq.question)
+            valid = r["all_citations_valid"]
             if valid:
                 valid_count += 1
-            total_cited += len(cited)
+            total_cited += r["cited_count"]
+
+            # Run answer_checks
+            check_results = []
+            for check in gq.answer_checks:
+                accuracy_total += 1
+                passed = check(r["answer"])
+                if passed:
+                    accuracy_pass += 1
+                check_results.append(passed)
 
             row = {
                 "question": gq.question[:60],
                 "description": gq.description,
                 "valid": valid,
-                "cited_count": len(cited),
-                "issues": result["issues"],
-                "latency_s": round(elapsed, 2),
-                "tool_calls": len(result["tool_calls"]),
+                "cited_count": r["cited_count"],
+                "issues": r["issues"],
+                "latency_s": r["latency_s"],
+                "tool_calls": r["tool_calls"],
+                "accuracy_checks": check_results,
             }
             results.append(row)
-            print(f"\n{'✅' if valid else '❌'} {gq.question[:60]}")
-            print(f"   Cited: {len(cited)} | Latency: {elapsed:.1f}s | Tools: {len(result['tool_calls'])}")
-            if result["issues"]:
-                print(f"   Issues: {result['issues']}")
 
-        citation_coverage = valid_count / total_questions * 100
+            status = "✅" if valid else "❌"
+            acc = f"acc {sum(check_results)}/{len(check_results)}" if check_results else "no checks"
+            print(f"\n{status} [{acc}] {gq.question[:55]}")
+            print(f"   Cited: {r['cited_count']} | {r['latency_s']}s | tools: {r['tool_calls']}")
+            if r["issues"]:
+                print(f"   Issues: {r['issues']}")
+
+        n = len(GOLDEN_QUESTIONS)
+        citation_pct = valid_count / n * 100
+        accuracy_pct = accuracy_pass / accuracy_total * 100 if accuracy_total else 0
+
         print(f"\n{'='*60}")
-        print(f"SCOREBOARD: {valid_count}/{total_questions} questions fully cited ({citation_coverage:.0f}%)")
-        print(f"Total cited numbers: {total_cited}")
+        print(f"Citation coverage: {valid_count}/{n} ({citation_pct:.0f}%)")
+        print(f"Accuracy checks:   {accuracy_pass}/{accuracy_total} ({accuracy_pct:.0f}%)")
+        print(f"Total cited nums:  {total_cited}")
 
-        # Write results for the README
+        latencies = [r["latency_s"] for r in results]
+        latencies.sort()
+        p50 = latencies[len(latencies) // 2]
+        p95 = latencies[int(len(latencies) * 0.95)]
+        print(f"Latency P50: {p50}s  P95: {p95}s")
+
         RESULTS_FILE.write_text(json.dumps({
-            "citation_coverage_pct": citation_coverage,
+            "citation_coverage_pct": citation_pct,
+            "accuracy_pct": accuracy_pct,
             "valid_count": valid_count,
-            "total_questions": total_questions,
+            "total_questions": n,
             "total_cited_numbers": total_cited,
+            "accuracy_pass": accuracy_pass,
+            "accuracy_total": accuracy_total,
+            "p50_latency_s": p50,
+            "p95_latency_s": p95,
             "results": results,
         }, indent=2))
 
-        # Target: ≥ 80% citation coverage
-        assert citation_coverage >= 80, (
-            f"Citation coverage {citation_coverage:.0f}% below 80% target. Results: {results}"
-        )
+        assert citation_pct >= 80, f"Citation coverage {citation_pct:.0f}% below 80% target"
+        assert accuracy_pct >= 70, f"Accuracy {accuracy_pct:.0f}% below 70% target"

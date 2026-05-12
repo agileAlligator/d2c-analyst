@@ -1,16 +1,37 @@
 """Minimal Streamlit chat UI."""
 import os
+import re
 
 import requests
 import streamlit as st
 
-API_URL = os.getenv("API_URL", "http://localhost:8000")
+
+def _clean_answer(text: str) -> str:
+    """Strip <cite ref="...">value</cite> tags — keep just the value."""
+    return re.sub(r'<cite ref="[^"]*">([^<]*)</cite>', r'\1', text)
+
+API_URL = os.getenv("API_URL", "http://localhost:10001")
 
 st.set_page_config(page_title="D2C Analyst", page_icon="🏪", layout="wide")
 st.title("D2C Analyst")
 st.caption("Ask anything about your Shopify, Meta Ads, and Shiprocket data.")
 
 merchant_id = st.sidebar.text_input("Merchant ID", value="demo")
+
+SUGGESTED_QUESTIONS = [
+    "What was total revenue in the last 30 days?",
+    "What is my contribution margin per order this week?",
+    "Which orders had negative contribution margin last month?",
+    "Which courier has the highest RTO rate?",
+    "What is our RTO rate by courier in the last 30 days?",
+    "How much did we spend on Meta Ads in the last 30 days?",
+    "What is our CAC in the last 30 days?",
+    "What was our total ad spend vs total revenue in the last 14 days? What is the ROAS?",
+    "Which Meta campaign spent the most in the last 30 days?",
+    "Compare revenue between the last 7 days and the last 30 days.",
+    "What is our average order value in the last 30 days?",
+    "Show me the top 5 orders by revenue in the last 30 days.",
+]
 
 if "history" not in st.session_state:
     st.session_state.history = []
@@ -21,15 +42,27 @@ if "messages" not in st.session_state:
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
-        if msg.get("issues"):
-            st.warning(f"Citation issues: {msg['issues']}")
+        if msg["role"] == "assistant":
+            if msg.get("citations_valid"):
+                st.caption("✓ All numbers verified against source data")
+            elif msg.get("issues"):
+                st.warning(f"⚠ Some numbers could not be verified: {msg['issues']}")
         if msg.get("tool_calls"):
             with st.expander(f"Tool calls ({len(msg['tool_calls'])})"):
                 for tc in msg["tool_calls"]:
                     st.json(tc)
 
-# Chat input
-if question := st.chat_input("What's my contribution margin by SKU this week?"):
+# Suggested questions — pill buttons above the chat input
+st.markdown("**Try asking:**")
+cols = st.columns(3)
+selected_suggestion = None
+for i, q in enumerate(SUGGESTED_QUESTIONS):
+    if cols[i % 3].button(q, key=f"suggest_{i}", use_container_width=True):
+        selected_suggestion = q
+
+question = selected_suggestion or st.chat_input("What's my contribution margin by SKU this week?")
+
+if question:
     st.session_state.messages.append({"role": "user", "content": question})
     with st.chat_message("user"):
         st.markdown(question)
@@ -50,10 +83,13 @@ if question := st.chat_input("What's my contribution margin by SKU this week?"):
                 data = resp.json()
 
                 answer = data["answer"]
-                st.markdown(answer)
+                display_answer = _clean_answer(answer)
+                st.markdown(display_answer)
 
-                if not data["all_citations_valid"]:
-                    st.warning(f"⚠ Citation issues: {data['issues']}")
+                if data["all_citations_valid"]:
+                    st.caption("✓ All numbers verified against source data")
+                else:
+                    st.warning(f"⚠ Some numbers could not be verified: {data['issues']}")
 
                 if data["tool_calls"]:
                     with st.expander(f"Tool calls ({len(data['tool_calls'])})"):
@@ -62,12 +98,14 @@ if question := st.chat_input("What's my contribution margin by SKU this week?"):
 
                 st.session_state.messages.append({
                     "role": "assistant",
-                    "content": answer,
+                    "content": display_answer,
+                    "citations_valid": data.get("all_citations_valid"),
                     "issues": data.get("issues"),
                     "tool_calls": data.get("tool_calls"),
                 })
 
-                # Update conversation history for multi-turn
+                # Keep raw answer (with cite tags) in history so the LLM
+                # can reference provenance IDs in follow-up turns
                 st.session_state.history.append({"role": "user", "content": question})
                 st.session_state.history.append({"role": "assistant", "content": answer})
 

@@ -52,11 +52,19 @@ METRIC_SQL: dict[str, str] = {
         {group_by_clause}
     """,
 
+    # rto_rate is a fraction (0.0–1.0). rto_rate_pct is the same value as a percentage
+    # (0–100) so chat answers can cite the percentage directly without arithmetic.
+    # Existing consumers (agents/margin_watch) still read rto_rate and format with :.1%.
     "rto_rate": """
         SELECT
             {group_by_select}
             COUNT(DISTINCT CASE WHEN ev.event_type = 'rto' THEN ev.entity_id END)::float /
                 NULLIF(COUNT(DISTINCT CASE WHEN ev.event_type = 'shipping_cost' THEN ev.entity_id END), 0) AS rto_rate,
+            ROUND(
+                (COUNT(DISTINCT CASE WHEN ev.event_type = 'rto' THEN ev.entity_id END)::numeric /
+                 NULLIF(COUNT(DISTINCT CASE WHEN ev.event_type = 'shipping_cost' THEN ev.entity_id END), 0)
+                ) * 100, 1
+            ) AS rto_rate_pct,
             COUNT(DISTINCT CASE WHEN ev.event_type = 'rto' THEN ev.entity_id END) AS rto_count,
             COUNT(DISTINCT CASE WHEN ev.event_type = 'shipping_cost' THEN ev.entity_id END) AS total_shipments,
             ARRAY_AGG(DISTINCT p.raw_record_id) FILTER (WHERE p.raw_record_id IS NOT NULL) AS provenance_ids

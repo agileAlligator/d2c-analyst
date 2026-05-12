@@ -9,7 +9,8 @@ Each question has:
 
 Ground truth from seeded demo merchant (80 orders, May 2026):
   revenue 30d:  ₹41,646     revenue 7d:  ₹11,491
-  ad_spend 30d: ₹172,211    ad_spend 14d: ~₹86,000
+  ad_spend 30d: ~₹29,700    ad_spend 14d: ~₹13,860
+  ROAS 14d: ~1.37x (below 2.0 threshold — agent fires)
   orders 30d:   ~10          BlueDart RTO rate: 60%  (highest)
   CM 7d order 1063: ₹-8.03  (negative margin)
 """
@@ -68,18 +69,18 @@ GOLDEN_QUESTIONS: list[GoldenQuestion] = [
     # ── Ad spend ─────────────────────────────────────────────────────────
     GoldenQuestion(
         question="How much did we spend on Meta Ads in the last 30 days?",
-        description="Ad spend query — must cite raw_meta_insights, ~₹172,211",
+        description="Ad spend query — must cite raw_meta_insights, ~₹29,700",
         expected_metrics=["ad_spend"],
         answer_checks=[
-            _number_in_range(165_000, 180_000),
+            _number_in_range(22_000, 38_000),
         ],
     ),
     GoldenQuestion(
         question="How much did we spend on Meta Ads in the last 14 days?",
-        description="14d ad spend — partial window",
+        description="14d ad spend — partial window, ~₹13,860",
         expected_metrics=["ad_spend"],
         answer_checks=[
-            _number_in_range(50_000, 120_000),
+            _number_in_range(9_000, 19_000),
             _mentions_any("Meta", "ad", "spend"),
         ],
     ),

@@ -2,7 +2,7 @@
 
 AI analyst + autonomous Margin Watch agent for D2C brands. Chat with your data. Get cited answers. Watch your margins.
 
-On the seed merchant (80 orders, 30-day window), Margin Watch surfaces **~₹24,200/month** in actionable savings: ₹450 from a courier switch (BlueDart→Delhivery), ₹23,717 from pausing a 0.27x ROAS campaign, and ₹44 from repricing one negative-margin SKU.
+On the seed merchant (80 orders, 30-day window), Margin Watch surfaces **~₹4,700/month** in actionable savings: ₹450 from a courier switch (BlueDart→Delhivery), ₹4,160 from pausing underperforming campaigns (ROAS 1.37x, below the 2.0x threshold), and ₹44 from repricing one negative-margin SKU.
 
 ---
 
@@ -160,7 +160,7 @@ Why this approach over alternatives: RouteLLM (trained classifier) requires labe
 
 **Why Margin Watch:** it is the only agent where all three connectors are load-bearing simultaneously — remove any one and the proposals degrade. The courier switch needs Shiprocket RTO data. The ad pause needs Meta spend. The price raise needs Shopify revenue *and* Shiprocket shipping cost to compute the actual margin. That cross-connector dependency is what makes it a real test of the universal model, not a single-source query with an LLM wrapper.
 
-The honest concession: the ₹23,717 ad-pause proposal fires because ROAS is 0.27x — a number any spreadsheet would catch. The agent's value isn't finding obvious disasters; it's doing this continuously across thousands of merchants, linking logistics to revenue to spend in a way no existing D2C tool does natively, and expressing every claim with a citation back to a source row. On the seed merchant it surfaces ~₹24,200/month. At 10k merchants that compounds — that's the product.
+The ad-pause proposal on the seed merchant fires because ROAS is 1.37x — below the 2.0x threshold, but not a number a founder running on vibes would notice. They'd see "ads are running," not "ads are generating ₹1.37 for every ₹1 spent, and pausing the bottom 30% by spend preserves the higher-ROAS campaigns while recovering ~₹4,160." That cross-source calculation — spend from Meta, revenue attribution through discount codes, shipping cost from Shiprocket — is what the agent exists to do. On the seed merchant it surfaces ~₹4,700/month. At 10k merchants that compounds — that's the product.
 
 Runs every 6 hours (cron in Docker Compose; manually triggerable via `make agent`).
 
@@ -188,9 +188,10 @@ Would-do API call: {"connector": "shiprocket", "action": "update_courier_prefere
                    "body": {"preferred_courier": "Delhivery"}, "NOT_SENT": true}
 
 ### 2. pause_adset — meta:all_campaigns
-Expected impact: ₹23,717
-Reasoning: Blended ROAS is 0.27x over the last 14 days (₹79,058 spend, ₹21,681 revenue).
-           Pausing the bottom 30% of campaigns could save ~₹23,717.
+Expected impact: ₹4,160
+Reasoning: Blended ROAS is 1.37x over the last 14 days (₹13,862 spend, ₹18,993 revenue).
+           Pausing the bottom 30% of campaigns by spend could save ~₹4,160
+           while preserving higher-ROAS campaigns.
 Provenance: insight:camp_002:2026-05-12, insight:camp_001:2026-05-02, ...
 Would-do API call: {"connector": "meta_ads", "endpoint": "POST /{ad-set-id}",
                    "body": {"status": "PAUSED"}, "NOT_SENT": true}

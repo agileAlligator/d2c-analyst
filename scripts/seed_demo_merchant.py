@@ -157,7 +157,7 @@ def _seed_meta(db):
     for days_ago in range(30):
         date = (datetime.now(UTC) - timedelta(days=days_ago)).strftime("%Y-%m-%d")
         for camp_id, camp_name in CAMPAIGNS:
-            spend = RNG.uniform(500, 3000)
+            spend = RNG.uniform(180, 480)
             impressions = int(spend * RNG.uniform(100, 300))
             clicks = int(impressions * RNG.uniform(0.01, 0.05))
             purchases = int(clicks * RNG.uniform(0.02, 0.08))

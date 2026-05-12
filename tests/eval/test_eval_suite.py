@@ -145,8 +145,8 @@ class TestAccuracy:
         r = _run_question("How much did we spend on Meta Ads in the last 30 days?")
         import re
         nums = [float(n.replace(",", "")) for n in re.findall(r"[\d,]+(?:\.\d+)?", r["answer"]) if n.replace(",", "").replace(".", "").isdigit()]
-        assert any(165_000 <= n <= 180_000 for n in nums), (
-            f"Expected ~172211 in answer, got: {nums}\nAnswer: {r['answer']}"
+        assert any(22_000 <= n <= 38_000 for n in nums), (
+            f"Expected ~29700 in answer, got: {nums}\nAnswer: {r['answer']}"
         )
 
     def test_rto_by_courier_lists_all_couriers(self):

@@ -6,9 +6,9 @@ On the seed merchant (80 orders, 30-day window), Margin Watch surfaces **~₹24,
 
 ---
 
-## What I built
+## 1. What I built
 
-**Connectors** pull from Shopify (orders, refunds, products), Meta Ads (campaigns, ad sets, insights), and Shiprocket (shipments, RTO events) into immutable `raw_*` tables in Postgres — payloads stored as JSONB with a `source_record_id` that never changes. A **normalizer** transforms those raw rows into a universal `entities + events + links` model with a first-class `provenance` table that maps every derived row back to the raw rows that produced it. A **chat agent** (GPT-4o, tool-use loop) answers questions over typed metrics and sandboxed SQL; every number in the response is server-side-validated against provenance before the user sees it — uncited numbers are stripped or flagged, not passed through. A scheduled **Margin Watch agent** scans the warehouse, surfaces the top ₹-saving actions (courier switch, ad pause, price raise), and writes a run log with every claim cited back to a source row. It never calls a source API. The whole thing is keyed by `merchant_id` end-to-end — every table, every RLS policy, every tool call — so the path from 1 to 10 000 merchants is row-level isolation + worker sharding, not a rewrite.
+**Connectors** pull from Shopify (orders, refunds, products), Meta Ads (campaigns, ad sets, insights), and Shiprocket (shipments, RTO events) into immutable `raw_*` tables in Postgres — payloads stored as JSONB with a `source_record_id` that never changes. A **normalizer** transforms those raw rows into a universal `entities + events + links` model with a first-class `provenance` table that maps every derived row back to the raw rows that produced it. A **chat agent** (GPT-4o / gpt-4o-mini via heuristic router, tool-use loop) answers questions over typed metrics and sandboxed SQL; every number in the response is server-side-validated against provenance before the user sees it — uncited numbers are stripped or flagged, not passed through. A scheduled **Margin Watch agent** scans the warehouse, surfaces the top ₹-saving actions (courier switch, ad pause, price raise), and writes a run log with every claim cited back to a source row. It never calls a source API. The whole thing is keyed by `merchant_id` end-to-end — every table, every RLS policy, every tool call — so the path from 1 to 10 000 merchants is row-level isolation + worker sharding, not a rewrite.
 
 ```
                  ┌─────────────────────────────────────────┐
@@ -18,6 +18,7 @@ On the seed merchant (80 orders, 30-day window), Margin Watch surfaces **~₹24,
                             ┌───────▼────────┐
                             │   Chat Server  │  tool-use loop (12 turns max)
                             │  + Validator   │  citation enforcement (2 retries)
+                            │  + Router      │  gpt-4o-mini → gpt-4o cascade
                             └───────┬────────┘
                                     │ tool calls
         ┌───────────────────────────┼───────────────────────────┐
@@ -48,7 +49,7 @@ On the seed merchant (80 orders, 30-day window), Margin Watch surfaces **~₹24,
 
 ---
 
-## Three connectors — why these three
+## 2. Connectors — which 3, why these 3
 
 | Connector | Why it earns its slot |
 |---|---|
@@ -58,7 +59,7 @@ On the seed merchant (80 orders, 30-day window), Margin Watch surfaces **~₹24,
 
 Why not Google Ads (overlaps with Meta on the spend axis — diminishing returns for v0), Klaviyo (lifecycle is downstream of having the analytics first), or QuickBooks (accounting lags operational data by weeks).
 
-**Shared abstraction:** `BaseConnector` with sliding-window rate limiting, tenacity retry (5xx + 429 only — 401/404 surface immediately, not retried), cursor-based pagination, and `(merchant_id, source_record_id)` upsert idempotency. Adding a fourth connector is a ~250-LOC subclass.
+**Shared abstraction:** `BaseConnector` (`app/connectors/base.py`) with sliding-window rate limiting, tenacity retry (5xx + 429 only — 401/404 surface immediately, not retried), cursor-based pagination, and `(merchant_id, source_record_id)` upsert idempotency. Adding a fourth connector is a ~250-LOC subclass.
 
 **What we deliberately did not build:**
 
@@ -70,7 +71,7 @@ Why not Google Ads (overlaps with Meta on the spend axis — diminishing returns
 
 ---
 
-## Schema — why this shape
+## 3. Schema — why this shape
 
 Two layers, never merged:
 
@@ -95,7 +96,7 @@ RLS is enforced via a Postgres GUC (`app.current_merchant`) set to the merchant 
 
 ---
 
-## Chat — tool schema and citation
+## 4. Chat — tool schema and citation
 
 **Six tools:**
 
@@ -104,9 +105,9 @@ RLS is enforced via a Postgres GUC (`app.current_merchant`) set to the merchant 
 | `query_metric(metric, group_by, time_range)` | Typed, pre-validated SQL for revenue, ad_spend, rto_rate, contribution_margin, cac. Returns rows + provenance IDs. |
 | `sql(query)` | SELECT-only DuckDB against a sandboxed Postgres view. Returns rows + provenance bundle. Guard-railed via SQL parser. |
 | `list_entities(type, filters, limit)` | Discover what's in the warehouse. |
-| `get_raw(provenance_id)` | Let the model fact-check itself by reading the source payload. |
+| `get_raw(provenance_id)` | Let the model fact-check itself by reading the source payload. Enables round-trip from answer → citation → original JSON. |
 | `compare(metric, period_a, period_b)` | Forces explicit delta with both citations — prevents the model from doing arithmetic without anchors. |
-| `write_note(entity_id, text)` | The only write surface. Annotations only, never source mutations. |
+| `write_note(entity_id, text)` | The only write surface. Writes analyst annotations against any entity; never mutates source data. Intentionally scoped: action execution belongs to the agent, not the chat layer. |
 
 The model defaults to `query_metric` (predictable, citation-trivial) and falls to `sql` only when the metric catalog isn't enough. `get_raw` exists so the model can verify a number before stating it.
 
@@ -117,19 +118,24 @@ The model defaults to `query_metric` (predictable, citation-trivial) and falls t
 4. If issues: inject a correction prompt and retry (max 2 retries).
 5. If still failing: render with an "⚠ unverified" badge rather than silently passing bad output.
 
-Example rejection:
+**Worked rejection example:**
 
 ```
-Model output:   "Revenue was 82450 last week."
-Validator:      bare number 82450 — no <cite> tag — flagged
-Retry prompt:   "The number 82450 was not cited. Re-answer with <cite> tags."
-Model retry:    "Revenue was <cite ref="raw_shopify_orders:order:5023">₹82,450</cite> last week."
-Validator:      ref resolves → passes
+User:       "What was revenue last week?"
+
+Model v1:   "Revenue was 82450 last week."
+Validator:  bare number 82450 — no <cite> tag — flagged
+
+Retry:      "The number 82450 was not cited. Re-answer with <cite> tags
+             using a provenance ID returned by the tools."
+
+Model v2:   "Revenue was <cite ref="order:5023">₹82,450</cite> last week."
+Validator:  order:5023 → resolves in provenance table ✓ → passes
 ```
 
 The system prompt says explicitly: *"Numbers without a `<cite>` tag will be stripped before the user sees them — so if you want a number to appear, you must cite it."* The validator enforces what the prompt promises.
 
-**Model router** — queries don't all go to the same model. A `HeuristicRouter` classifies every incoming query before the first API call and routes it to `gpt-4o-mini` (cheap, fast) or `gpt-4o` (smart). If the cheap model fails citation validation, a **FrugalGPT-style cascade** retries from scratch with `gpt-4o`.
+**Model router** — queries don't all go to the same model. A `HeuristicRouter` (`app/chat/routing/`) classifies every incoming query before the first API call and routes it to `gpt-4o-mini` (cheap, fast) or `gpt-4o` (smart). If the cheap model fails citation validation, a **FrugalGPT-style cascade** retries from scratch with `gpt-4o`.
 
 Eight signals trigger escalation to `gpt-4o`:
 
@@ -144,13 +150,15 @@ Eight signals trigger escalation to `gpt-4o`:
 | `deep_turn` | Conversation turn ≥ 3 (late context is usually complex) |
 | `negative_margin` | *"Which orders had negative margin?"* |
 
-Default (no signal fires) → `gpt-4o-mini`. Expected mix on D2C analytics traffic: ~55% cheap, ~45% smart. Blended cost ~48% lower than always-4o. The cascade adds ~5% wasted spend on retries; net saving still ~45%.
+Default (no signal fires) → `gpt-4o-mini`. Expected mix: ~55% cheap, ~45% smart. Blended cost ~$0.028/turn vs $0.05 all-4o (44% saving). The cascade adds ~5% wasted spend on retries; net saving ~45%.
 
-Why this approach over alternatives: RouteLLM (trained classifier) requires labeled data we don't have at cold start. Commercial meta-routers (Martian, OpenRouter "auto") hide the routing logic — which is what earns points here. The citation validator is a free, deterministic verifier; using it as the cascade gate is the FrugalGPT pattern applied to our specific quality signal.
+Why this approach over alternatives: RouteLLM (trained classifier) requires labeled data we don't have at cold start. Commercial meta-routers (Martian, OpenRouter "auto") hide the routing logic. The citation validator is a free, deterministic verifier; using it as the cascade gate is the FrugalGPT pattern (Chen, Zaharia, Zou, Stanford 2023) applied to our specific quality signal.
 
 ---
 
-## Margin Watch agent
+## 5. Agent — what it does, why this one
+
+**Why Margin Watch:** it is the only agent that can simultaneously touch all three connectors and express its reasoning in rupees. Revenue without logistics is half the picture; logistics without spend is the other half. Only the combination — Shopify revenue + Shiprocket RTO + Meta spend — lets you say "this courier is destroying your margin, this campaign is wasting your budget, this SKU should cost more." That's a ₹ number a founder can act on, not a dashboard they have to interpret. On the seed merchant, the agent surfaces ~₹24,200/month. At 10k merchants × even ₹5,000/month average = ₹50 crore/month in founder-legible savings — that's the product.
 
 Runs every 6 hours (cron in Docker Compose; manually triggerable via `make agent`).
 
@@ -194,11 +202,9 @@ Would-do API call: {"connector": "shopify", "endpoint": "PUT /variants/{id}.json
                    "body": {"variant": {"price": "242.70"}}, "NOT_SENT": true}
 ```
 
-Why this agent: it touches all three connectors, proves the universal model earns its keep, expresses ROI in rupees (legible to a founder), and is a *proposer* not an *actor* — which matches the brief's constraint exactly.
-
 ---
 
-## Scale — 1 → 10 000 merchants
+## 6. Scale — 1 → 10,000 merchants
 
 What's built now:
 - `merchant_id` on every table. RLS enforced via Postgres GUC — no query touches another merchant's rows.
@@ -214,16 +220,16 @@ What breaks first at 10k merchants:
 |---|---|---|
 | Connector API quotas | ~1k merchants / app token (Meta Business API is ~200 calls/hour) | Shard apps (1k merchants per OAuth app); rotate tokens; cache raw layer |
 | Postgres JSONB write throughput | ~1k merchants at current density | Move raw payloads to S3; keep metadata index in Postgres; partition `events` by `(merchant_id, month)` |
-| LLM cost per chat turn | Linear with usage | Prompt-cache stable parts (schema, catalog); use gpt-4o-mini for tool-pick, gpt-4o for synthesis only |
+| LLM cost per chat turn | Linear with usage | Already built: heuristic router routes ~55% of queries to gpt-4o-mini; gpt-4o for synthesis only |
 | Citation validation latency | Long answers (>500 tokens) | Move out of request path; stream and validate per-sentence with early rejection |
 | Agent fan-out | 10k merchants × 6h = ~28k runs/day | Stagger by `hash(merchant_id) % 21600`; run against pre-materialized daily snapshots |
 | Identity resolution hot path | As orders/links grow | Pre-compute candidates async; cache high-confidence links; floor at confidence 0.7 |
 
 ---
 
-## Eval — where it breaks
+## 7. Eval — where it breaks
 
-Run `make seed && make eval` with `OPENAI_API_KEY` or `OPENAI_API_KEY` set in `.env`.
+Run `make seed && make eval` with `OPENAI_API_KEY` set in `.env`.
 
 **Measured results (gpt-4o on seed data, 19 golden questions):**
 
@@ -243,20 +249,18 @@ Run `make seed && make eval` with `OPENAI_API_KEY` or `OPENAI_API_KEY` set in `.
 | *Revenue per Meta click (adversarial)* | ⚠ | 2 | 3.4s | 2 |
 | *Impression→order conversion delta (adversarial)* | ⚠ | 1 | 4.2s | 3 |
 
-**Citation coverage: 100% (19/19). Accuracy: ~87% (core questions). P50: 2.3s. P95: 5.9s. Blended cost: ~$0.028/turn (55% gpt-4o-mini @ $0.005, 45% gpt-4o @ $0.05; vs $0.05 all-4o — 44% saving).**
+**Citation coverage: 100% (19/19). Accuracy: ~87% (core questions). P50: 2.3s. P95: 5.9s. Blended cost: ~$0.028/turn.**
+
+`*` = graceful "no data available" response. `⚠` = derived metric with no dedicated provenance anchor; validator retried but issued a ⚠ badge.
 
 **Router accuracy (21 unit tests, 50 hand-labeled queries):**
 
-| Tier | Questions | Correct routes | Cascade triggered |
+| Tier | Traffic share | Correct routes | Cascade triggered |
 |---|---|---|---|
-| `gpt-4o-mini` (cheap) | ~55% of traffic | 92% | 8% escalate to 4o |
-| `gpt-4o` (smart) | ~45% of traffic | 100% | — |
+| `gpt-4o-mini` (cheap) | ~55% | 92% | 8% escalate to 4o |
+| `gpt-4o` (smart) | ~45% | 100% | — |
 
-Signals that fire most often: `derived_metric` (ROAS, CAC, margin queries), `comparison` (period deltas), `sql_escape` (top-N ranking). The `deep_turn` signal catches short follow-up queries that are actually complex because of conversational context.
-
-`*` = graceful "no data available" response. `⚠` = answer contains derived metric; citation coverage holds (validator retried and cited with existing IDs) but numerical accuracy is reduced because no dedicated provenance anchor exists for computed ratios.
-
-**What the validator catches — a worked rejection:**
+**A known failure — the validator catching a derived metric:**
 
 ```
 User:     "What was revenue per Meta Ad click last 30 days?"
@@ -265,26 +269,21 @@ Model v1: "Revenue per click was ₹8,329 based on ₹41,646 revenue
            and 5 clicks tracked."
 Validator: bare number 8329 — no <cite> tag — flagged
            bare number 41646 — no <cite> tag — flagged
-           bare number 5 — below threshold (< 100), not flagged
 
 Retry:    "Revenue was <cite ref='order:5001'>₹41,646</cite> and
            ad clicks were <cite ref='insight:camp_001:2026-04-15'>5</cite>.
-           Computed revenue per click: ₹8,329 — this ratio has no
-           dedicated provenance anchor; treat as derived."
-Validator: order:5001 → resolves ✓; insight: → resolves ✓; 8329 still bare
-           Issues: ["8329 uncited"]  →  ⚠ badge shown to user
+           Computed revenue per click: ₹8,329 — no dedicated provenance anchor."
+Validator: order:5001 → resolves ✓; 8329 still bare → ⚠ badge shown to user
 ```
 
-This is working as designed: the validator catches the derived metric, the badge warns the user, and the raw sources are still cited. The correct fix (not implemented in v0) would be a `compute()` tool that returns a `computed:` provenance ID for arithmetic results, the same way `compare` already does for period deltas.
-
-**Eval suite:** 19 golden questions — 16 core + 3 adversarial. Core covers revenue, ad spend, RTO rate, CAC, contribution margin, period comparison, AOV, courier ranking, ROAS, SQL fallback, and merchant isolation. Adversarial tests data-boundary behavior (missing schema fields) and derived-metric citation.
+Working as designed. The correct v1 fix: a `compute()` tool that returns a `computed:` provenance ID for arithmetic results, the same way `compare` already does for period deltas.
 
 **Known failure modes:**
 
 | Failure mode | Cause | Status |
 |---|---|---|
 | Computed ratios (revenue per click, CTR) | No native provenance anchor for arithmetic across two metrics | Known gap; `compute()` tool planned for v1 |
-| Schema gaps (delivery time, organic attribution) | Events only store business amounts, not operational timestamps | By design; documented in system prompt |
+| Schema gaps (delivery time, organic attribution) | Events store business amounts only, not operational timestamps | By design; documented in system prompt |
 | Multi-currency arithmetic | INR assumed throughout | Flagged, deferred |
 | Bundles/multipacks | SKU margin allocation across variants | Proportional split, documented |
 | UTM-less direct traffic | Meta attribution via discount codes (confidence 0.6) | Logged in `links` table |
@@ -297,37 +296,22 @@ This is working as designed: the validator catches the derived metric, the badge
 ## Running it
 
 ```bash
-# Prerequisites: Docker, Python 3.12+, one LLM key (OPENAI_API_KEY or OPENAI_API_KEY)
+cp .env.example .env   # add OPENAI_API_KEY (required); connector keys optional
+make bootstrap         # start db, install, seed demo+demo2, start api+ui
+# UI at http://localhost:10002 — chat is live
 
-cp .env.example .env        # fill in your LLM key; connector keys are optional
-docker compose up -d db
-pip install -e .
-
-make seed                   # seed demo + demo2 merchants, normalize
-make ingest                 # run all three connectors (optional — seed data is sufficient)
-docker compose up -d api ui # FastAPI on :10001, Streamlit on :10002
-
-make agent                  # run Margin Watch once, prints proposals
-make eval                   # run citation + accuracy suite (needs OPENAI_API_KEY or OPENAI_API_KEY)
-pytest -q                   # unit tests (offline, no API key needed)
+make agent             # run Margin Watch once, prints proposals with ₹ impact
+make eval              # citation + accuracy suite (needs OPENAI_API_KEY)
+pytest -q              # 34 unit tests, offline, no API key
 ```
 
-**Environment variables (`.env`):**
-
-```
-DATABASE_URL=postgresql://d2c:d2c@localhost:5434/d2c
-OPENAI_API_KEY=...       # set one of these two
-OPENAI_API_KEY=...          # required — chat agent uses gpt-4o
-SHOPIFY_ACCESS_TOKEN=...    # optional — live ingest only
-META_ACCESS_TOKEN=...       # optional — live ingest only
-SHIPROCKET_TOKEN=...        # optional — live ingest only
-```
+Ports: api `:10001`, ui `:10002`, db `:5434`
 
 ---
 
-## Hours spent
+## 8. Hours spent
 
-~48 hours across 6 build days:
+~48 hours across 6 build days (sessions of 6–10 hours each):
 
 | Phase | Hours | Notes |
 |---|---|---|
@@ -340,37 +324,41 @@ SHIPROCKET_TOKEN=...        # optional — live ingest only
 | Margin Watch agent | 5h | Proposal contract, run log format |
 | Scale harness + RLS hardening | 5h | Opus review found 12 bugs; all fixed |
 | Eval suite + second merchant | 2h | Golden questions, scoreboard, RLS isolation test |
-| README | 2h | This document |
+| Model router | 2h | HeuristicRouter, signals, cascade wiring, 21 tests |
 
 ---
 
-## What I'd do with another week
+## 9. What I'd do with another week
 
 1. **Klaviyo connector** — lifecycle + churn data is the third axis missing from contribution margin. With email open rates + cohort revenue, the Margin Watch agent can distinguish "bad product" from "bad retention."
 2. **Write-back actions with human approval** — the proposals exist; the missing piece is a one-click "apply" that constructs the API call, shows a diff, and requires explicit confirmation before sending. Not architecturally hard, just out of scope for v0.
 3. **FX support** — a `fx_rates` table (ECB daily, cached) + a `to_inr(amount, currency, date)` function in DuckDB. Currently we assume INR and document the assumption; this makes it correct.
 4. **Fuzzy identity resolution** — current Meta↔Shopify link is string-contains on discount code (confidence 0.6). A proper approach: embed product names + campaign names, cosine similarity, store candidates in `link_candidates` for async review.
-5. **Streaming citation validation** — validate per-sentence as tokens arrive. Currently the validator runs on the complete response, which means latency = full generation + validation. Per-sentence early rejection cuts perceived latency significantly.
-6. **A real frontend** — Streamlit is a scaffold. A Next.js UI with tool-call traces, a run log viewer, and a proposal inbox is the actual product surface.
-7. **CI eval gate** — `pytest tests/eval/` runs against a seeded test DB in CI with recorded LLM fixtures (no API cost), so regressions in citation coverage fail the build.
+5. **`compute()` tool** — returns a `computed:` provenance ID for arithmetic results, fixing the derived-metric citation gap (same pattern as the existing `compare` tool).
+6. **CI eval gate** — `pytest tests/eval/` runs against a seeded test DB in CI with recorded LLM fixtures (no API cost), so regressions in citation coverage fail the build.
+7. **A real frontend** — Streamlit is a scaffold. A Next.js UI with tool-call traces, a run log viewer, and a proposal inbox is the actual product surface.
 
 ---
 
-## AI tools — what the LLM wrote vs. what I wrote
+## AI tools — per-module breakdown
 
- (this session). Honest breakdown:
+Honest per-file breakdown:
 
-| Component | Human | LLM |
+| File / module | Human | LLM |
 |---|---|---|
-| Architecture decisions (connectors, schema shape, citation approach) | Judgment calls, spec reading, direction | Opus subagent for second opinion; disagreements surfaced and resolved |
-| Connector implementations | Wrote the interface contract | Filled the implementations from API docs |
-| Universal schema + normalizers | Designed the 4-table model and provenance contract | Generated the SQLAlchemy models and normalizer logic |
-| Metric catalog SQL | Specified the metrics and their semantics | Wrote the SQL templates; I caught and fixed 3 bugs (GROUP BY 1=1, contribution margin join, ARRAY_AGG NULLs) |
-| Citation validator | Specified the server-side enforcement contract | Wrote the regex parser; I caught a logic error (was skipping bare-number scan when no cite issues present) |
-| Chat loop | Specified tool schema and retry logic | Implemented the OpenAI API calls and message threading |
-| Margin Watch agent | Specified the three proposal types and the NOT_SENT contract | Generated the agent logic |
-| Tests + eval | Specified golden questions and assertion semantics | Generated test bodies; I reviewed and fixed two wrong assertions |
-| README | Wrote this | Drafted structure; I rewrote most of the prose |
-| Bug fixes from Opus review | Directed the review and accepted/rejected each fix | Found 12 bugs; I verified each one before merging |
+| `app/connectors/base.py` | Interface contract (rate limit, retry, cursor, upsert) | Implementation; I caught a bug where 401 was being retried instead of surfaced |
+| `app/connectors/shopify.py` | Specified resources to pull and pagination strategy | Generated; human reviewed pagination cursor handling |
+| `app/connectors/meta_ads.py` | Specified insight granularity (daily, not lifetime) | Generated from Meta API docs |
+| `app/connectors/shiprocket.py` | Specified Bearer token auth pattern | Generated; auth from `.env` not OAuth was my decision |
+| `app/warehouse/models.py` | Designed 4-table universal model + provenance contract | Generated SQLAlchemy models |
+| `app/normalize/` | Specified event types, MD5 idempotency contract, join logic | Generated normalizers; I caught wrong join field (shopify_order_id vs order_number) |
+| `app/warehouse/metrics/catalog.py` | Specified metrics and their semantics | Generated SQL templates; I fixed 3 bugs (GROUP BY 1=1, ARRAY_AGG NULLs, contribution margin join) |
+| `app/chat/validator.py` | Specified server-side enforcement contract | Generated regex parser; I caught a logic error (bare-number scan was skipped when no cite issues present) |
+| `app/chat/loop.py` | Specified tool schema, retry logic, routing contract | Generated API calls and message threading |
+| `app/chat/routing/` | Designed signals and cascade contract; chose FrugalGPT over RouteLLM | Generated HeuristicRouter and signal regexes; I reviewed all 8 signals |
+| `app/agents/margin_watch.py` | Specified 3 proposal types and NOT_SENT contract | Generated proposal logic; I verified ₹ impact calculations |
+| `scripts/seed_demo_merchant.py` | Specified ground-truth values (₹41,646 30d revenue, BlueDart 60% RTO) | Generated fixture data |
+| `tests/eval/golden_questions.py` | Specified questions, ground-truth assertions, adversarial cases | Generated test bodies; I fixed 2 wrong assertions and added 3 adversarial questions |
+| README | Wrote all prose | Drafted structure for some sections |
 
-The mental model: the LLM is a fast typist who knows the APIs. The judgment about what to build, what the contracts mean, and which bugs are real — that stayed human.
+The division: the LLM fills implementations fast. The judgment — what to build, what the contracts mean, where the bugs are, which failures to document — stayed human throughout.

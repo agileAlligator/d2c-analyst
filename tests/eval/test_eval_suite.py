@@ -118,7 +118,8 @@ class TestAccuracy:
         """30d revenue should be ~₹41,646."""
         r = _run_question("What was total revenue in the last 30 days?")
         import re
-        nums = [float(n.replace(",", "")) for n in re.findall(r"[\d,]+(?:\.\d+)?", r["answer"]) if n.replace(",", "").replace(".", "").isdigit()]
+        raw = re.findall(r"[\d,]+(?:\.\d+)?", r["answer"])
+        nums = [float(n.replace(",", "")) for n in raw if n.replace(",", "").replace(".", "").isdigit()]
         assert any(40_000 <= n <= 43_000 for n in nums), (
             f"Expected ~41646 in answer, got numbers: {nums}\nAnswer: {r['answer']}"
         )
@@ -141,12 +142,13 @@ class TestAccuracy:
         )
 
     def test_ad_spend_30d_ballpark(self):
-        """30d ad spend should be ~₹172,211."""
+        """30d ad spend should be ~₹31,465 (exact RNG(42) replay)."""
         r = _run_question("How much did we spend on Meta Ads in the last 30 days?")
         import re
-        nums = [float(n.replace(",", "")) for n in re.findall(r"[\d,]+(?:\.\d+)?", r["answer"]) if n.replace(",", "").replace(".", "").isdigit()]
-        assert any(22_000 <= n <= 38_000 for n in nums), (
-            f"Expected ~29700 in answer, got: {nums}\nAnswer: {r['answer']}"
+        raw = re.findall(r"[\d,]+(?:\.\d+)?", r["answer"])
+        nums = [float(n.replace(",", "")) for n in raw if n.replace(",", "").replace(".", "").isdigit()]
+        assert any(26_745 <= n <= 36_185 for n in nums), (
+            f"Expected ~31465 (±15%) in answer, got: {nums}\nAnswer: {r['answer']}"
         )
 
     def test_rto_by_courier_lists_all_couriers(self):
@@ -161,7 +163,8 @@ class TestAccuracy:
         """Comparison answer must contain values for both 7d (~11,491) and 30d (~41,646)."""
         r = _run_question("Compare revenue between the last 7 days and the last 30 days.")
         import re
-        nums = [float(n.replace(",", "")) for n in re.findall(r"[\d,]+(?:\.\d+)?", r["answer"]) if n.replace(",", "").replace(".", "").isdigit()]
+        raw = re.findall(r"[\d,]+(?:\.\d+)?", r["answer"])
+        nums = [float(n.replace(",", "")) for n in raw if n.replace(",", "").replace(".", "").isdigit()]
         has_7d = any(10_000 <= n <= 13_000 for n in nums)
         has_30d = any(40_000 <= n <= 43_000 for n in nums)
         assert has_7d and has_30d, (
@@ -224,7 +227,6 @@ class TestFullScorecardAndWrite:
     """Run all golden questions, produce scoreboard, write eval_results.json."""
 
     def test_full_scoreboard(self):
-        from app.chat.validator import CITE_RE
         from tests.eval.golden_questions import GOLDEN_QUESTIONS
 
         results = []

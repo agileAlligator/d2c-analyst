@@ -9,7 +9,10 @@ Each question has:
 
 Ground truth from seeded demo merchant (80 orders, May 2026):
   revenue 30d:  ₹41,646     revenue 7d:  ₹11,491
-  ad_spend 30d: ~₹29,700    ad_spend 14d: ~₹13,860
+  ad_spend 30d: ₹31,465.35  ad_spend 14d: ₹14,526.97
+    (computed by replaying RNG(42) through 320 order calls + 9 refund calls
+     before the Meta insights loop; 90 uniform(180,480) draws for 30d,
+     42 draws for 14d)
   ROAS 14d: ~1.37x (below 2.0 threshold — agent fires)
   orders 30d:   ~10          BlueDart RTO rate: 60%  (highest)
   CM 7d order 1063: ₹-8.03  (negative margin)
@@ -69,18 +72,18 @@ GOLDEN_QUESTIONS: list[GoldenQuestion] = [
     # ── Ad spend ─────────────────────────────────────────────────────────
     GoldenQuestion(
         question="How much did we spend on Meta Ads in the last 30 days?",
-        description="Ad spend query — must cite raw_meta_insights, ~₹29,700",
+        description="Ad spend query — must cite raw_meta_insights, ₹31,465.35",
         expected_metrics=["ad_spend"],
         answer_checks=[
-            _number_in_range(22_000, 38_000),
+            _number_in_range(26_745, 36_185),  # ₹31,465.35 ± 15%
         ],
     ),
     GoldenQuestion(
         question="How much did we spend on Meta Ads in the last 14 days?",
-        description="14d ad spend — partial window, ~₹13,860",
+        description="14d ad spend — partial window, ₹14,526.97",
         expected_metrics=["ad_spend"],
         answer_checks=[
-            _number_in_range(9_000, 19_000),
+            _number_in_range(12_347, 16_706),  # ₹14,526.97 ± 15%
             _mentions_any("Meta", "ad", "spend"),
         ],
     ),
@@ -219,7 +222,10 @@ GOLDEN_QUESTIONS: list[GoldenQuestion] = [
     ),
     GoldenQuestion(
         question="What was our revenue per Meta Ad click in the last 30 days?",
-        description="ADVERSARIAL: computed ratio (revenue ÷ clicks) — no native provenance anchor; tests cite-or-refuse behavior",
+        description=(
+            "ADVERSARIAL: computed ratio (revenue ÷ clicks) — no native provenance anchor;"
+            " tests cite-or-refuse behavior"
+        ),
         expected_metrics=["revenue", "ad_spend"],
         answer_checks=[
             # Model must either cite a computed value OR refuse — not state a bare number
@@ -228,7 +234,10 @@ GOLDEN_QUESTIONS: list[GoldenQuestion] = [
         ],
     ),
     GoldenQuestion(
-        question="How did our conversion rate from ad impressions to orders change between last week and the week before?",
+        question=(
+            "How did our conversion rate from ad impressions to orders"
+            " change between last week and the week before?"
+        ),
         description="ADVERSARIAL: multi-step derived metric with two time windows — tests chained computation citation",
         expected_metrics=[],
         answer_checks=[

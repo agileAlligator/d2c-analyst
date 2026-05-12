@@ -208,7 +208,12 @@ def _run_openai_compat(question, db, merchant_id, history):
                 cleaned, valid, issues = validate_and_clean(raw_answer, all_provenance_ids, db)
                 if valid or attempt >= MAX_RETRIES:
                     r = _result(cleaned, valid, issues, tool_trace, all_provenance_ids)
-                    r["routing"] = {"model": "gpt-4o", "tier": "smart", "reason": "openai_routing", "escalated": False}
+                    r["routing"] = {
+                        "model": "gpt-4o",
+                        "tier": "smart",
+                        "reason": "openai_routing",
+                        "escalated": False,
+                    }
                     return r
                 messages = messages + [
                     {"role": "assistant", "content": response.content},

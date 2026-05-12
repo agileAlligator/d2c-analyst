@@ -1,7 +1,7 @@
 """Unit tests for HeuristicRouter — offline, no API calls."""
 import pytest
 
-from app.chat.routing import HeuristicRouter, RoutingDecision
+from app.chat.routing import HeuristicRouter
 from app.chat.routing.router import CHEAP_MODEL, SMART_MODEL
 
 

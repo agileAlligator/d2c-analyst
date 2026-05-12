@@ -2,7 +2,7 @@
 
 AI analyst + autonomous Margin Watch agent for D2C brands. Chat with your data. Get cited answers. Watch your margins.
 
-On the seed merchant (80 orders, 30-day window), Margin Watch surfaces **~₹4,700/month** in actionable savings: ₹450 from a courier switch (BlueDart→Delhivery), ₹4,160 from pausing underperforming campaigns (ROAS 1.37x, below the 2.0x threshold), and ₹44 from repricing one negative-margin SKU.
+On the seed merchant (80 orders, 30-day window), Margin Watch surfaces **~₹4,860/month** in actionable savings: ₹450 from a courier switch (BlueDart→Delhivery), ₹4,358 from pausing underperforming campaigns (ROAS 1.49x, below the 2.0x threshold), and ₹52 from repricing two negative-margin SKUs.
 
 ---
 
@@ -160,7 +160,7 @@ Why this approach over alternatives: RouteLLM (trained classifier) requires labe
 
 **Why Margin Watch:** it is the only agent where all three connectors are load-bearing simultaneously — remove any one and the proposals degrade. The courier switch needs Shiprocket RTO data. The ad pause needs Meta spend. The price raise needs Shopify revenue *and* Shiprocket shipping cost to compute the actual margin. That cross-connector dependency is what makes it a real test of the universal model, not a single-source query with an LLM wrapper.
 
-The ad-pause proposal on the seed merchant fires because ROAS is 1.37x — below the 2.0x threshold, but not a number a founder running on vibes would notice. They'd see "ads are running," not "ads are generating ₹1.37 for every ₹1 spent, and pausing the bottom 30% by spend preserves the higher-ROAS campaigns while recovering ~₹4,160." That cross-source calculation — spend from Meta, revenue attribution through discount codes, shipping cost from Shiprocket — is what the agent exists to do. On the seed merchant it surfaces ~₹4,700/month. At 10k merchants that compounds — that's the product.
+The ad-pause proposal on the seed merchant fires because ROAS is 1.49x — below the 2.0x threshold, and below break-even on a blended basis, but not a number a founder running on vibes would notice. They'd see "ads are running," not "ads are generating ₹1.49 for every ₹1 spent on ₹14,527 of ad spend, and pausing the bottom 30% by spend preserves higher-ROAS campaigns while recovering ~₹4,358." That cross-source calculation — spend from Meta, revenue attribution through discount codes, shipping cost from Shiprocket — is what the agent exists to do. On the seed merchant it surfaces ~₹4,860/month. At 10k merchants that compounds — that's the product.
 
 Runs every 6 hours (cron in Docker Compose; manually triggerable via `make agent`).
 
@@ -179,30 +179,46 @@ Every proposal includes:
 Real run output (`make agent` on seed data):
 
 ```
+Blended ROAS (14d): 1.49x (spend ₹14,527)
+
 ### 1. switch_courier — courier:BlueDart
-Expected impact: ₹450
-Reasoning: Courier 'BlueDart' has an RTO rate of 60.0% (3 returns in 30 days).
-           Switching to 'Delhivery' (RTO rate 37.5%) could save ~₹450/month.
-Provenance: shipment:8011, shipment:8000, shipment:8029, shipment:8037, shipment:8069
-Would-do API call: {"connector": "shiprocket", "action": "update_courier_preference",
-                   "body": {"preferred_courier": "Delhivery"}, "NOT_SENT": true}
+**Expected impact:** ₹450
+**Reasoning:** Courier 'BlueDart' has an RTO rate of 60.0% (3 returns in 30 days).
+              Switching to 'Delhivery' (RTO rate 37.5%) could save ~₹450/month.
+**Provenance:** shipment:8004, shipment:8021, shipment:8046, shipment:8005, shipment:8028
+**Would-do API call:** {'connector': 'shiprocket', 'action': 'update_courier_preference',
+                       'body': {'preferred_courier': 'Delhivery'}, 'NOT_SENT': True}
 
 ### 2. pause_adset — meta:all_campaigns
-Expected impact: ₹4,160
-Reasoning: Blended ROAS is 1.37x over the last 14 days (₹13,862 spend, ₹18,993 revenue).
-           Pausing the bottom 30% of campaigns by spend could save ~₹4,160
-           while preserving higher-ROAS campaigns.
-Provenance: insight:camp_002:2026-05-12, insight:camp_001:2026-05-02, ...
-Would-do API call: {"connector": "meta_ads", "endpoint": "POST /{ad-set-id}",
-                   "body": {"status": "PAUSED"}, "NOT_SENT": true}
+**Expected impact:** ₹4,358
+**Reasoning:** Blended ROAS is 1.49x over the last 14 days (₹14,527 spend,
+              ₹21,681 attributed revenue). Pausing the bottom 30% of campaigns
+              by spend could save ~₹4,358 while preserving higher-ROAS campaigns.
+**Provenance:** insight:camp_001:2026-05-08, insight:camp_002:2026-05-10,
+               insight:camp_003:2026-05-12, insight:camp_001:2026-04-29,
+               insight:camp_003:2026-05-10
+**Would-do API call:** {'connector': 'meta_ads', 'endpoint': 'POST /{ad-set-id}',
+                       'body': {'status': 'PAUSED'}, 'NOT_SENT': True}
 
 ### 3. raise_price — order:1027
-Expected impact: ₹44
-Reasoning: Order 1027 has contribution margin of ₹-43.70 (revenue ₹199.00,
-           shipping ₹151.64, RTO cost ₹91.06). Raising price 22% → breakeven.
-Provenance: shipment:8037, order:5031, order:5037, ...
-Would-do API call: {"connector": "shopify", "endpoint": "PUT /variants/{id}.json",
-                   "body": {"variant": {"price": "242.70"}}, "NOT_SENT": true}
+**Expected impact:** ₹44
+**Reasoning:** Order 1027 has contribution margin of ₹-43.70 (revenue ₹199.00,
+              shipping ₹151.64, RTO cost ₹91.06). Raising the product price
+              by 22.0% would move this order to breakeven.
+**Provenance:** shipment:8004, order:5060, order:5063, order:5004, shipment:8063
+**Would-do API call:** {'connector': 'shopify',
+                       'endpoint': 'PUT /admin/api/2024-01/variants/{variant_id}.json',
+                       'body': {'variant': {'price': '242.78'}}, 'NOT_SENT': True}
+
+### 4. raise_price — order:1063
+**Expected impact:** ₹8
+**Reasoning:** Order 1063 has contribution margin of ₹-8.03 (revenue ₹199.00,
+              shipping ₹101.13, RTO cost ₹105.90). Raising the product price
+              by 4.0% would move this order to breakeven.
+**Provenance:** shipment:8004, order:5063, order:5004, shipment:8063, shipment:8021
+**Would-do API call:** {'connector': 'shopify',
+                       'endpoint': 'PUT /admin/api/2024-01/variants/{variant_id}.json',
+                       'body': {'variant': {'price': '207.03'}}, 'NOT_SENT': True}
 ```
 
 ---

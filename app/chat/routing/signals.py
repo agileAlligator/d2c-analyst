@@ -1,7 +1,6 @@
 """Feature extraction for routing decisions."""
 import re
 
-
 # Keywords that predict multi-step, derived-metric, or causal queries
 _COMPARISON_RE = re.compile(
     r"\b(vs|versus|compare|against|between|difference|delta|change|trend)\b", re.I

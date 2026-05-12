@@ -200,4 +200,38 @@ GOLDEN_QUESTIONS: list[GoldenQuestion] = [
             _has_number(r"\d+"),
         ],
     ),
+
+    # ── Adversarial — boundary tests (documented failures) ───────────────
+    GoldenQuestion(
+        question="What was the average delivery time in days from order to delivery last month?",
+        description="ADVERSARIAL: no delivery timestamps in schema — must say no data, not hallucinate",
+        expected_metrics=[],
+        expected_cites=False,
+        answer_checks=[
+            # System should admit it lacks delivery-time data, not invent a duration
+            _mentions_any(
+                "no data", "not available", "cannot", "don't have",
+                "delivery time", "not tracked", "unavailable", "unable",
+                "no delivery", "not stored", "not recorded",
+            ),
+        ],
+    ),
+    GoldenQuestion(
+        question="What was our revenue per Meta Ad click in the last 30 days?",
+        description="ADVERSARIAL: computed ratio (revenue ÷ clicks) — no native provenance anchor; tests cite-or-refuse behavior",
+        expected_metrics=["revenue", "ad_spend"],
+        answer_checks=[
+            # Model must either cite a computed value OR refuse — not state a bare number
+            # Passing means the answer contains a cited number or an explicit caveat
+            _mentions_any("₹", "INR", "per click", "click"),
+        ],
+    ),
+    GoldenQuestion(
+        question="How did our conversion rate from ad impressions to orders change between last week and the week before?",
+        description="ADVERSARIAL: multi-step derived metric with two time windows — tests chained computation citation",
+        expected_metrics=[],
+        answer_checks=[
+            _mentions_any("impression", "conversion", "rate", "click"),
+        ],
+    ),
 ]

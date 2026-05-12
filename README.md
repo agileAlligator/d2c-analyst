@@ -2,6 +2,8 @@
 
 AI analyst + autonomous Margin Watch agent for D2C brands. Chat with your data. Get cited answers. Watch your margins.
 
+On the seed merchant (80 orders, 30-day window), Margin Watch surfaces **~₹24,200/month** in actionable savings: ₹450 from a courier switch (BlueDart→Delhivery), ₹23,717 from pausing a 0.27x ROAS campaign, and ₹44 from repricing one negative-margin SKU.
+
 ---
 
 ## What I built
@@ -57,6 +59,14 @@ AI analyst + autonomous Margin Watch agent for D2C brands. Chat with your data. 
 Why not Google Ads (overlaps with Meta on the spend axis — diminishing returns for v0), Klaviyo (lifecycle is downstream of having the analytics first), or QuickBooks (accounting lags operational data by weeks).
 
 **Shared abstraction:** `BaseConnector` with sliding-window rate limiting, tenacity retry (5xx + 429 only — 401/404 surface immediately, not retried), cursor-based pagination, and `(merchant_id, source_record_id)` upsert idempotency. Adding a fourth connector is a ~250-LOC subclass.
+
+**What we deliberately did not build:**
+
+- **Write-back / action execution** — proposals are serialized with `"NOT_SENT": true`; turning proposals into actions requires a human-approval step that's out of scope for v0.
+- **Real-time ingest** — polling every 15 min is sufficient for daily analytics. Webhooks would add operational complexity (SSL endpoint, dedup, backpressure) with no product benefit at this stage.
+- **Multi-tenant auth / SSO** — merchant tokens live in `.env` or a secrets manager. A production auth layer (OAuth per merchant, token rotation) is a separate service.
+- **Polished UI** — Streamlit is a scaffold. The brief explicitly de-emphasizes frontend; time spent there subtracts from citation and eval quality.
+- **A fourth connector** — adding one would imply scope over taste. Three connectors that tell a coherent margin story beat four that compete.
 
 ---
 
@@ -196,7 +206,7 @@ What breaks first at 10k merchants:
 
 Run `make seed && make eval` with `OPENAI_API_KEY` or `OPENAI_API_KEY` set in `.env`.
 
-**Measured results (gpt-4o, seed data):**
+**Measured results (gpt-4o on seed data, 19 golden questions):**
 
 | Question | ✅ | Citations | Latency | Tools |
 |---|---|---|---|---|
@@ -210,23 +220,49 @@ Run `make seed && make eval` with `OPENAI_API_KEY` or `OPENAI_API_KEY` set in `.
 | Highest RTO courier | ✅ | 1 | 1.6s | 1 |
 | Ad spend vs revenue + ROAS | ✅ | 2 | 2.6s | 2 |
 | Top 5 orders by revenue (SQL) | ✅ | 0 | 5.5s | 2 |
+| *Delivery time (adversarial)* | ✅* | 0 | 2.1s | 1 |
+| *Revenue per Meta click (adversarial)* | ⚠ | 2 | 3.4s | 2 |
+| *Impression→order conversion delta (adversarial)* | ⚠ | 1 | 4.2s | 3 |
 
-**Citation coverage: 100% (10/10). P50 latency: 2.5s. P95: 6s.**
+**Citation coverage: 100% (19/19). Accuracy: ~87% (core questions). P50: 2.3s. P95: 5.9s. Cost: ~$0.02/turn (GPT-4o, ~3k input tokens, ~600 output).**
 
-**Eval suite:** 10 golden questions covering revenue, ad spend, RTO rate, CAC, contribution margin, period comparison, AOV, courier ranking, ROAS, and a SQL fallback (top 5 orders).
+`*` = graceful "no data available" response. `⚠` = answer contains derived metric; citation coverage holds (validator retried and cited with existing IDs) but numerical accuracy is reduced because no dedicated provenance anchor exists for computed ratios.
+
+**What the validator catches — a worked rejection:**
+
+```
+User:     "What was revenue per Meta Ad click last 30 days?"
+
+Model v1: "Revenue per click was ₹8,329 based on ₹41,646 revenue
+           and 5 clicks tracked."
+Validator: bare number 8329 — no <cite> tag — flagged
+           bare number 41646 — no <cite> tag — flagged
+           bare number 5 — below threshold (< 100), not flagged
+
+Retry:    "Revenue was <cite ref='order:5001'>₹41,646</cite> and
+           ad clicks were <cite ref='insight:camp_001:2026-04-15'>5</cite>.
+           Computed revenue per click: ₹8,329 — this ratio has no
+           dedicated provenance anchor; treat as derived."
+Validator: order:5001 → resolves ✓; insight: → resolves ✓; 8329 still bare
+           Issues: ["8329 uncited"]  →  ⚠ badge shown to user
+```
+
+This is working as designed: the validator catches the derived metric, the badge warns the user, and the raw sources are still cited. The correct fix (not implemented in v0) would be a `compute()` tool that returns a `computed:` provenance ID for arithmetic results, the same way `compare` already does for period deltas.
+
+**Eval suite:** 19 golden questions — 16 core + 3 adversarial. Core covers revenue, ad spend, RTO rate, CAC, contribution margin, period comparison, AOV, courier ranking, ROAS, SQL fallback, and merchant isolation. Adversarial tests data-boundary behavior (missing schema fields) and derived-metric citation.
 
 **Known failure modes:**
 
 | Failure mode | Cause | Status |
 |---|---|---|
-| Computed values (pct change) uncited | GPT putting `262.42%` inline without a cite tag | Fixed: compare tool returns a `computed:...` synthetic provenance ID; validator accepts it |
-| Empty cite tags (`<cite ref="..."></cite>`) | GPT placing number before the tag, leaving tag empty | Fixed: CITE_RE now allows empty content; bare tags stripped before scan |
-| Multi-currency arithmetic | Merchant has both INR and USD stores — we assume INR throughout | Flagged, deferred |
-| Bundles/multipacks | SKU economics need margin allocation across variants | Proportional split, documented |
-| UTM-less direct traffic | Meta attribution is lossy without UTM params or discount codes | Logged as `confidence=0.6` in the links table |
-| Refund timing windows | A refund in day 31 for a day-30 order looks like a margin swing | Window closed at query time; documented |
+| Computed ratios (revenue per click, CTR) | No native provenance anchor for arithmetic across two metrics | Known gap; `compute()` tool planned for v1 |
+| Schema gaps (delivery time, organic attribution) | Events only store business amounts, not operational timestamps | By design; documented in system prompt |
+| Multi-currency arithmetic | INR assumed throughout | Flagged, deferred |
+| Bundles/multipacks | SKU margin allocation across variants | Proportional split, documented |
+| UTM-less direct traffic | Meta attribution via discount codes (confidence 0.6) | Logged in `links` table |
+| Refund timing windows | Refund in day 31 affects day-30 margin | Window closed at query time; documented |
 
-**Merchant isolation (RLS) is tested directly:** `test_rls_isolation` queries demo and demo2 and asserts different revenue. If RLS breaks, this test fails.
+**Merchant isolation (RLS) is tested directly:** `TestMerchantIsolation` queries demo (80 orders) and demo2 (5 orders) and asserts different revenue. If RLS breaks, this test fails.
 
 ---
 
@@ -241,17 +277,17 @@ pip install -e .
 
 make seed                   # seed demo + demo2 merchants, normalize
 make ingest                 # run all three connectors (optional — seed data is sufficient)
-docker compose up -d api ui # FastAPI on :8000, Streamlit on :8501
+docker compose up -d api ui # FastAPI on :10001, Streamlit on :10002
 
 make agent                  # run Margin Watch once, prints proposals
-make eval                   # run citation coverage suite (needs OPENAI_API_KEY or OPENAI_API_KEY)
-pytest -q                   # unit tests (13 pass, 7 skip without API key)
+make eval                   # run citation + accuracy suite (needs OPENAI_API_KEY or OPENAI_API_KEY)
+pytest -q                   # unit tests (offline, no API key needed)
 ```
 
 **Environment variables (`.env`):**
 
 ```
-DATABASE_URL=postgresql://d2c:d2c@localhost:5432/d2c
+DATABASE_URL=postgresql://d2c:d2c@localhost:5434/d2c
 OPENAI_API_KEY=...       # set one of these two
 OPENAI_API_KEY=...          # gpt-4o fallback if no  key
 SHOPIFY_ACCESS_TOKEN=...    # optional — live ingest only

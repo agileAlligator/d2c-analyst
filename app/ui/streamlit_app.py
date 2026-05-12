@@ -47,6 +47,13 @@ for msg in st.session_state.messages:
                 st.caption("✓ All numbers verified against source data")
             elif msg.get("issues"):
                 st.warning(f"⚠ Some numbers could not be verified: {msg['issues']}")
+            r = msg.get("routing") or {}
+            if r:
+                model = r.get("model", "")
+                label = f"{'⚡' if r.get('tier') == 'cheap' else '🧠'} {model}"
+                if r.get("escalated"):
+                    label += " (escalated)"
+                st.caption(f"{label} · {r.get('reason', '')}")
         if msg.get("tool_calls"):
             with st.expander(f"Tool calls ({len(msg['tool_calls'])})"):
                 for tc in msg["tool_calls"]:
@@ -91,6 +98,16 @@ if question:
                 else:
                     st.warning(f"⚠ Some numbers could not be verified: {data['issues']}")
 
+                routing = data.get("routing") or {}
+                if routing:
+                    model = routing.get("model", "")
+                    reason = routing.get("reason", "")
+                    escalated = routing.get("escalated", False)
+                    label = f"{'⚡' if routing.get('tier') == 'cheap' else '🧠'} {model}"
+                    if escalated:
+                        label += " (escalated)"
+                    st.caption(f"{label} · routed via {reason}")
+
                 if data["tool_calls"]:
                     with st.expander(f"Tool calls ({len(data['tool_calls'])})"):
                         for tc in data["tool_calls"]:
@@ -102,6 +119,7 @@ if question:
                     "citations_valid": data.get("all_citations_valid"),
                     "issues": data.get("issues"),
                     "tool_calls": data.get("tool_calls"),
+                    "routing": data.get("routing"),
                 })
 
                 # Keep raw answer (with cite tags) in history so the LLM

@@ -27,12 +27,20 @@ class ChatRequest(BaseModel):
     history: list[dict] | None = None
 
 
+class RoutingInfo(BaseModel):
+    model: str
+    tier: str
+    reason: str
+    escalated: bool
+
+
 class ChatResponse(BaseModel):
     answer: str
     all_citations_valid: bool
     issues: list[str]
     provenance_ids: list[str]
     tool_calls: list[dict]
+    routing: RoutingInfo | None = None
 
 
 @app.get("/health")

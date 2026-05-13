@@ -76,10 +76,11 @@ class TestNewForbiddenTokens:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.skipif(
-    not os.getenv("DATABASE_URL"),
-    reason="DATABASE_URL not set",
-)
+DB_AVAILABLE = bool(os.getenv("DATABASE_URL"))
+pytestmark_db = pytest.mark.skipif(not DB_AVAILABLE, reason="DATABASE_URL not set")
+
+
+@pytestmark_db
 class TestMerchantIsolation:
     def test_entities_view_filters_to_demo(self):
         demo_rows, _ = sandboxed_sql("SELECT COUNT(*) AS n FROM entities", "demo")
@@ -103,3 +104,98 @@ class TestMerchantIsolation:
     def test_pg_prefix_rejected_at_sandboxed_sql_level(self):
         with pytest.raises(ValueError):
             sandboxed_sql("SELECT * FROM pg.entities", "demo")
+
+
+@pytestmark_db
+class TestSandboxedSqlRealQueries:
+    """Integration tests that run representative queries against live seed data.
+
+    These tests are the canary for DuckDB connectivity and extension loading.
+    If the postgres extension cannot be loaded (e.g. enable_external_access=false
+    blocks disk access), every test here fails immediately with a clear error —
+    rather than silently degrading at chat time.
+    """
+
+    def test_events_table_accessible(self):
+        """Proves DuckDB can connect to Postgres and read the events table."""
+        rows, _ = sandboxed_sql(
+            "SELECT COUNT(*) AS n FROM events WHERE event_type = 'order_revenue'",
+            "demo",
+        )
+        assert rows[0]["n"] > 0, "No order_revenue events found — seed data missing or DuckDB broken"
+
+    def test_events_join_entities(self):
+        """JOIN across two tables — the pattern used by top-N and revenue queries."""
+        rows, _ = sandboxed_sql(
+            """
+            SELECT en.attributes->>'order_number' AS order_number, SUM(ev.amount) AS revenue
+            FROM events ev
+            JOIN entities en ON ev.entity_id = en.entity_id
+            WHERE ev.event_type IN ('order_revenue', 'refund')
+            GROUP BY en.attributes->>'order_number'
+            ORDER BY revenue DESC
+            LIMIT 5
+            """,
+            "demo",
+        )
+        assert len(rows) > 0, "JOIN across events+entities returned no rows"
+        assert rows[0]["revenue"] >= rows[-1]["revenue"], "ORDER BY DESC not respected"
+
+    def test_provenance_join_returns_ids(self):
+        """JOIN to provenance table returns raw_record_id values."""
+        rows, prov_ids = sandboxed_sql(
+            """
+            SELECT
+                ev.event_id,
+                ARRAY_AGG(DISTINCT p.raw_record_id) AS provenance_ids
+            FROM events ev
+            JOIN provenance p ON p.row_table = 'events' AND p.row_pk = ev.event_id::text
+            WHERE ev.event_type = 'order_revenue'
+            GROUP BY ev.event_id
+            LIMIT 3
+            """,
+            "demo",
+        )
+        assert len(rows) > 0, "provenance JOIN returned no rows"
+        assert len(prov_ids) > 0, "no provenance_ids extracted from result"
+
+    def test_top5_orders_by_revenue_with_provenance(self):
+        """The exact query pattern the model uses for 'top 5 orders by revenue'.
+
+        This is the regression test for the enable_external_access=false bug that
+        made the sql tool silently return an error for any real analytical query.
+        """
+        rows, prov_ids = sandboxed_sql(
+            """
+            SELECT
+                en.attributes->>'order_number' AS order_number,
+                SUM(ev.amount) AS revenue,
+                ARRAY_AGG(DISTINCT p.raw_record_id) AS provenance_ids
+            FROM events ev
+            JOIN entities en ON ev.entity_id = en.entity_id
+            JOIN provenance p ON p.row_table = 'events' AND p.row_pk = ev.event_id::text
+            WHERE ev.event_type IN ('order_revenue', 'refund')
+              AND ev.occurred_at >= NOW() - INTERVAL '30 days'
+            GROUP BY en.attributes->>'order_number'
+            ORDER BY revenue DESC
+            LIMIT 5
+            """,
+            "demo",
+        )
+        assert len(rows) > 0, "top-5-orders query returned no rows"
+        assert len(prov_ids) > 0, "no provenance_ids in top-5-orders result"
+        assert all("order_number" in r for r in rows), "order_number column missing"
+        assert rows[0]["revenue"] >= rows[-1]["revenue"], "rows not sorted by revenue DESC"
+
+    def test_merchant_isolation_in_join_query(self):
+        """A JOIN query for 'demo' must not surface any 'demo2' rows."""
+        rows, _ = sandboxed_sql(
+            """
+            SELECT COUNT(DISTINCT ev.event_id) AS n
+            FROM events ev
+            JOIN entities en ON ev.entity_id = en.entity_id
+            WHERE ev.merchant_id = 'demo2'
+            """,
+            "demo",
+        )
+        assert rows[0]["n"] == 0, "demo query leaked demo2 rows through JOIN"

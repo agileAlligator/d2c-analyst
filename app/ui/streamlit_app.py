@@ -53,7 +53,9 @@ for msg in st.session_state.messages:
                 label = f"{'⚡' if r.get('tier') == 'cheap' else '🧠'} {model}"
                 if r.get("escalated"):
                     label += " (escalated)"
-                st.caption(f"{label} · {r.get('reason', '')}")
+                raw_reason = r.get('reason', '')
+                reason_label = raw_reason.split(":")[0] if ":" in raw_reason else raw_reason
+                st.caption(f"{label} · {reason_label}")
         if msg.get("tool_calls"):
             with st.expander(f"Tool calls ({len(msg['tool_calls'])})"):
                 for tc in msg["tool_calls"]:
@@ -67,7 +69,8 @@ for i, q in enumerate(SUGGESTED_QUESTIONS):
     if cols[i % 3].button(q, key=f"suggest_{i}", use_container_width=True):
         selected_suggestion = q
 
-question = selected_suggestion or st.chat_input("What's my contribution margin by SKU this week?")
+typed_question = st.chat_input("What's my contribution margin by SKU this week?")
+question = selected_suggestion or typed_question
 
 if question:
     st.session_state.messages.append({"role": "user", "content": question})
@@ -106,7 +109,8 @@ if question:
                     label = f"{'⚡' if routing.get('tier') == 'cheap' else '🧠'} {model}"
                     if escalated:
                         label += " (escalated)"
-                    st.caption(f"{label} · routed via {reason}")
+                    reason_label = reason.split(":")[0] if ":" in reason else reason
+                    st.caption(f"{label} · routed via {reason_label}")
 
                 if data["tool_calls"]:
                     with st.expander(f"Tool calls ({len(data['tool_calls'])})"):

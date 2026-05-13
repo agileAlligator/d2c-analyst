@@ -88,7 +88,11 @@ def validate_and_clean(
     # will be caught and stripped by the scan below. Bare tags are cleaned at the end.
 
     # Build exclusion spans: valid cite tags + time-period references (e.g. "30 days", "14d")
-    bare_number_re = re.compile(r'\b\d{2,}(?:\.\d+)?\b|\b\d+\.\d+\b')
+    bare_number_re = re.compile(
+        r'\b\d{1,3}(?:,\d{3})+(?:\.\d+)?\b'  # comma-formatted: 30,412 / 1,23,456
+        r'|\b\d{2,}(?:\.\d+)?\b'              # plain integers ≥ 2 digits
+        r'|\b\d+\.\d+\b'                       # decimals
+    )
     _timeref_re = re.compile(
         r'\b\d+\s*(?:days?|weeks?|months?|hours?|minutes?|years?|[dwmh])\b',
         re.IGNORECASE,

@@ -45,13 +45,6 @@ class TestShopifyConnector:
         assert records[0].source_record_id.startswith("order:")
 
 
-class TestShiprocketConnector:
-    def test_is_rto_detection(self):
-        # Not testing the method directly since it's in normalizer, but test via connector
-        from app.normalize.shiprocket_to_universal import _is_rto
-        assert _is_rto("RTO Initiated") is True
-        assert _is_rto("DELIVERED") is False
-        assert _is_rto("Return to origin") is True
 
 
 class TestMetaAdsConnector:

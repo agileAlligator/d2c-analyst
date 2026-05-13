@@ -18,13 +18,76 @@ CITE_RE = re.compile(r'<cite ref="([^"]+)">([^<]*)</cite>')
 # Strips any remaining bare <cite...> or </cite> tags (e.g. malformed GPT output)
 _BARE_CITE_TAG_RE = re.compile(r'</?cite[^>]*>')
 
+# Time-period references that should never require a citation.
+_timeref_re = re.compile(
+    # "30 days", "14d", "30 minutes"
+    r'\b\d+\s*(?:days?|weeks?|months?|hours?|minutes?|years?|[dwmh])\b'
+    # "30-day", "14-week", "3-month" (hyphenated adjective form)
+    r'|\b\d+-(?:day|week|month|hour|minute|year)s?\b'
+    # "last 30", "past 14", "previous 90", "trailing 7", "rolling 30", "next 30"
+    # (include the leading word so the bare digit falls inside the excluded span)
+    r'|\b(?:last|past|previous|trailing|rolling|next)\s+\d+\b',
+    re.IGNORECASE,
+)
 
-def _is_yearlike(n: str) -> bool:
+# Calendar-date references that should never be stripped. These protect the day-of-month
+# and year digits inside date labels (ISO, written, week-of). Distinct from _timeref_re
+# which covers rolling-window sizes ("30 days", "14d").
+_ISO_DATE_RE = re.compile(r'\b\d{4}-\d{2}-\d{2}\b')
+
+_WRITTEN_DATE_RE = re.compile(
+    r'\b(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|'
+    r'Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|'
+    r'Nov(?:ember)?|Dec(?:ember)?)\s+\d{1,2}(?:,\s*\d{4})?\b',
+    re.IGNORECASE,
+)
+
+_WEEK_LABEL_RE = re.compile(
+    r'\bweek\s+of\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|'
+    r'Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|'
+    r'Nov(?:ember)?|Dec(?:ember)?)\s+\d{1,2}(?:,\s*\d{4})?\b'
+    r'|\bweek\s+(?:starting|ending|of)\s+\d{4}-\d{2}-\d{2}\b',
+    re.IGNORECASE,
+)
+
+
+_MONTHS = (
+    r"jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|"
+    r"jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|"
+    r"nov(?:ember)?|dec(?:ember)?"
+)
+_YEAR_CONTEXT_BEFORE = re.compile(
+    r"(?:year|fy|fiscal|q[1-4]|" + _MONTHS + r")[\s,\-/]*$",
+    re.IGNORECASE,
+)
+_YEAR_CONTEXT_AFTER = re.compile(
+    r"^[\s,\-/]*(?:year|fy|fiscal|q[1-4]|" + _MONTHS + r"|to\s+\d{4}|-\s*\d{4}|/\d{2,4})",
+    re.IGNORECASE,
+)
+_ADJACENT_YEAR_RANGE = re.compile(r"^\s*[-–—]\s*\d{4}\b|\b\d{4}\s*[-–—]\s*$")
+# Proper-noun-before-year: protects campaign/event names like "Diwali Sale 2024",
+# "Spring Launch 2023", "New Year Push 2024". Requires TWO consecutive capitalized
+# words immediately before the year so that sentence-initial articles ("Our 2023",
+# "The 2024", "Last 2023") are NOT exempted — those have only one capital word.
+_PROPER_NOUN_BEFORE = re.compile(r"[A-Z][a-zA-Z]+\s+[A-Z][a-zA-Z]+[\s,\-]*$")
+
+
+def _is_yearlike(n: str, ctx_before: str = "", ctx_after: str = "") -> bool:
     try:
         v = float(n)
-        return v == int(v) and 1900 <= int(v) <= 2099
+        if not (v == int(v) and 1900 <= int(v) <= 2099):
+            return False
     except (ValueError, OverflowError):
         return False
+    if _YEAR_CONTEXT_BEFORE.search(ctx_before):
+        return True
+    if _YEAR_CONTEXT_AFTER.match(ctx_after):
+        return True
+    if _ADJACENT_YEAR_RANGE.search(ctx_before) or _ADJACENT_YEAR_RANGE.match(ctx_after):
+        return True
+    if _PROPER_NOUN_BEFORE.search(ctx_before):
+        return True
+    return False
 
 
 def _extract_number(s: str) -> float | None:
@@ -73,7 +136,11 @@ def validate_and_clean(
             num = _extract_number(value)
             if num is not None and num != 0:
                 tolerance = max(0.01, abs(num) * 0.01)
-                value_ok = any(abs(num - v) <= tolerance for v in tool_value_set)
+                value_ok = any(
+                    abs(num - v) <= tolerance
+                    or (v < 0 < num and abs(abs(num) - abs(v)) <= 0.01)
+                    for v in tool_value_set
+                )
                 if not value_ok:
                     issues.append(f"Cited value {value!r} for ref {ref_id!r} not found in tool results")
                     # Rewrite to unverified if not already done by ID check
@@ -93,13 +160,12 @@ def validate_and_clean(
         r'|\b\d{2,}(?:\.\d+)?\b'              # plain integers ≥ 2 digits
         r'|\b\d+\.\d+\b'                       # decimals
     )
-    _timeref_re = re.compile(
-        r'\b\d+\s*(?:days?|weeks?|months?|hours?|minutes?|years?|[dwmh])\b',
-        re.IGNORECASE,
-    )
     excluded_spans = (
         [(m.start(), m.end()) for m in CITE_RE.finditer(cleaned)]
         + [(m.start(), m.end()) for m in _timeref_re.finditer(cleaned)]
+        + [(m.start(), m.end()) for m in _ISO_DATE_RE.finditer(cleaned)]
+        + [(m.start(), m.end()) for m in _WRITTEN_DATE_RE.finditer(cleaned)]
+        + [(m.start(), m.end()) for m in _WEEK_LABEL_RE.finditer(cleaned)]
     )
 
     stripped: list[str] = []
@@ -107,7 +173,9 @@ def validate_and_clean(
     def _replace_bare(m: re.Match) -> str:
         n = m.group(0)
         pos = m.start()
-        if _is_yearlike(n):
+        ctx_before = cleaned[max(0, pos - 16): pos]
+        ctx_after = cleaned[m.end(): m.end() + 16]
+        if _is_yearlike(n, ctx_before, ctx_after):
             return n
         if any(s <= pos < e for s, e in excluded_spans):
             return n

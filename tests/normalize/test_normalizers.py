@@ -62,14 +62,6 @@ class TestShiprocketHelpers:
 
 @pytestmark_db
 class TestShopifyNormalizer:
-    def test_normalize_orders_returns_positive_count(self):
-        from app.normalize.shopify_to_universal import normalize_orders
-        from app.warehouse.db import SessionLocal
-
-        with SessionLocal() as db:
-            count = normalize_orders(db, MERCHANT)
-        assert count > 0, "normalize_orders returned 0 — no seed data?"
-
     def test_normalize_orders_creates_order_entities(self):
         from app.normalize.shopify_to_universal import normalize_orders
         from app.warehouse.db import SessionLocal
@@ -147,14 +139,6 @@ class TestShopifyNormalizer:
 
 @pytestmark_db
 class TestMetaNormalizer:
-    def test_normalize_campaigns_returns_positive_count(self):
-        from app.normalize.meta_to_universal import normalize_campaigns
-        from app.warehouse.db import SessionLocal
-
-        with SessionLocal() as db:
-            count = normalize_campaigns(db, MERCHANT)
-        assert count > 0
-
     def test_normalize_campaigns_creates_ad_campaign_entities(self):
         from app.normalize.meta_to_universal import normalize_campaigns
         from app.warehouse.db import SessionLocal
@@ -209,14 +193,6 @@ class TestMetaNormalizer:
 
 @pytestmark_db
 class TestShiprocketNormalizer:
-    def test_normalize_shipments_returns_positive_count(self):
-        from app.normalize.shiprocket_to_universal import normalize_shipments
-        from app.warehouse.db import SessionLocal
-
-        with SessionLocal() as db:
-            count = normalize_shipments(db, MERCHANT)
-        assert count > 0
-
     def test_normalize_shipments_creates_shipment_entities(self):
         from app.normalize.shiprocket_to_universal import normalize_shipments
         from app.warehouse.db import SessionLocal

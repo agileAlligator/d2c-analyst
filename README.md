@@ -102,7 +102,7 @@ RLS is enforced via a Postgres GUC (`app.current_merchant`) set to the merchant 
 
 | Tool | What it does |
 |---|---|
-| `query_metric(metric, group_by, time_range)` | Typed, pre-validated SQL for revenue, ad_spend, rto_rate, contribution_margin, cac. Returns rows + provenance IDs. |
+| `query_metric(metric, group_by, time_range)` | Typed, pre-validated SQL for **revenue, refunds, ad_spend, rto_rate, contribution_margin, cac, average_order_value, roas, orders**. Returns rows + provenance IDs. group_by supported: campaign, courier, date, week, month (schema-validated — raises a descriptive error if the requested dimension doesn't exist on the metric's entity, preventing silent NULL-group fabrication). |
 | `sql(query)` | SELECT-only DuckDB against a sandboxed Postgres view. Returns rows + provenance bundle. Guard-railed via SQL parser; DuckDB `enable_external_access = false` + token blocklist prevent exfiltration via file-read functions or schema inspection calls. |
 | `list_entities(type, filters, limit)` | Discover what's in the warehouse. |
 | `get_raw(provenance_id)` | Let the model fact-check itself by reading the source payload. Enables round-trip from answer → citation → original JSON. |
@@ -114,7 +114,7 @@ The model defaults to `query_metric` (predictable, citation-trivial) and falls t
 **Citation enforcement is server-side, not prompt-only.** After every model response:
 1. Parse all `<cite ref="ID">value</cite>` tags.
 2. Validate each ref against the provenance table. Also cross-check the cited numeric value against the set of numbers the tools actually returned — a model that cites a real provenance ID but inflates the value is caught here.
-3. Scan the remainder for bare numbers (≥ 2 digits). Any bare numbers are **replaced with `*(uncited)*`** in the output — they never reach the user unlabelled.
+3. Scan the remainder for bare numbers (≥ 2 digits). Any bare numbers are **replaced with `*(uncited)*`** in the output — they never reach the user unlabelled. The scanner has targeted exclusions: rolling-window sizes ("30 days", "14d"), calendar date labels (ISO dates like "2026-05-11", written dates like "April 29, 2026", week labels like "week of May 11"), years in fiscal/calendar context ("Q4 2025", "FY2026"), and years following multi-word proper nouns ("Diwali Sale 2024"). These are excluded by span, not exempted globally.
 4. If issues: inject a correction prompt and retry (max 2 retries).
 5. If still failing: render with an "⚠ unverified" badge rather than silently passing bad output.
 
@@ -251,6 +251,8 @@ Run `make seed && make eval` with `OPENAI_API_KEY` set in `.env`.
 
 **Citation enforcement: server-side, all 19 questions. Bare numbers replaced with `*(uncited)*` in output; unresolvable refs replaced with `*(unverified)*`. Accuracy: ~87% (core questions). P50: 2.3s. P95: 5.9s. Blended cost: ~$0.028/turn.**
 
+**Adversarial hardening (post-v0):** 7-round adversarial loop (Opus adversary → Opus plan → Sonnet implementation → Opus code review). Final round scored 0 points — no citation failures, no verifiable wrong claims, no crashes against 12 targeted attacks. Fixed during the loop: ~20 bugs including date-string stripping, DuckDB JSONB syntax, NULL campaign group fabrication, compare-tool WoW confusion, RTO/refund conflation, write_note SQL, and missing metrics (roas, refunds, orders).
+
 *By construction, every number that reaches the user is either cited (valid provenance ID) or replaced with `*(uncited)*`/`*(unverified)*` — so the signal is "no bare numbers leaked," not "the model cited everything." All 19 answers returned only cited values; 2 adversarial questions received `⚠` badges on derived ratios with no dedicated provenance anchor.*
 
 `*` = graceful "no data available" response. `⚠` = derived metric with no dedicated provenance anchor; validator retried but issued a ⚠ badge.
@@ -305,7 +307,7 @@ make bootstrap         # start db, install, seed demo+demo2, start api+ui
 
 make agent             # run Margin Watch once, prints proposals with ₹ impact
 make eval              # citation + accuracy suite (needs LLM key)
-pytest -q              # 94 tests (13 DB-gated, skipped without DATABASE_URL), offline, no API key
+pytest -q              # 116 tests (50 DB-gated, skipped without DATABASE_URL), offline, no API key
 ```
 
 For production use, set `API_KEYS=your-secret-key:demo` in `.env` and pass `X-API-Key: your-secret-key` in API requests. `DEV_MODE=true` disables key enforcement for local development.
@@ -330,6 +332,7 @@ Ports: api `:10001`, ui `:10002`, db `:5434`
 | Scale harness + RLS hardening | 5h | Opus review found 12 bugs; all fixed |
 | Eval suite + second merchant | 2h | Golden questions, scoreboard, RLS isolation test |
 | Model router | 2h | HeuristicRouter, signals, cascade wiring, 21 tests |
+| Adversarial hardening | 4h | 7-round loop; fixed ~20 bugs across validator, catalog, prompt, tools |
 
 ---
 

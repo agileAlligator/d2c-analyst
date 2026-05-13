@@ -99,6 +99,80 @@ def test_sub_100_bare_numbers_flagged(mock_db):
     assert any("28" in str(i) or "1.5" in str(i) for i in issues)
 
 
+def test_bare_year_in_claim_is_flagged(mock_db):
+    # "year 2023" — adjacent "year" context token → exempt (correct)
+    text = "The data is from the year 2023."
+    cleaned, valid, _ = validate_and_clean(text, provenance_ids=[], db=mock_db, merchant_id="demo")
+    assert valid is True
+
+    # "Our data is from 2023." — no context token → must be flagged (the bug)
+    text2 = "Our data is from 2023."
+    cleaned2, valid2, issues2 = validate_and_clean(text2, provenance_ids=[], db=mock_db, merchant_id="demo")
+    assert valid2 is False
+
+    # Month-adjacent year — exempt
+    text3 = "Revenue grew in April 2024."
+    _, valid3, _ = validate_and_clean(text3, provenance_ids=[], db=mock_db, merchant_id="demo")
+    assert valid3 is True
+
+    # Year range — exempt
+    text4 = "Compared 2023-2024 performance."
+    _, valid4, _ = validate_and_clean(text4, provenance_ids=[], db=mock_db, merchant_id="demo")
+    assert valid4 is True
+
+
+def test_period_prose_not_stripped(mock_db):
+    cases = [
+        "Your 30-day revenue trend looks healthy.",
+        "Over the 14-week period the spend doubled.",
+        "The trailing 7 days show recovery.",
+        "In the last 30 days, revenue was strong.",
+        "Past 14 days were solid.",
+    ]
+    for txt in cases:
+        cleaned, valid, issues = validate_and_clean(
+            txt, provenance_ids=[], db=mock_db, merchant_id="demo"
+        )
+        assert "*(uncited)*" not in cleaned, f"Period digit stripped in: {txt!r} → {cleaned!r}"
+        assert not any("ncited" in i for i in issues), f"Flagged in: {txt!r} → {issues}"
+
+
+def test_unsigned_magnitude_matches_negative_tool_value(mock_db):
+    """compare() returns delta=-25562; model writes 'a decrease of ₹25,562' — must pass."""
+    text = 'Revenue saw a decrease of <cite ref="computed:rev:delta">₹25,562</cite> vs last week.'
+    with patch("app.chat.validator._try_resolve", return_value=True):
+        cleaned, all_valid, issues = validate_and_clean(
+            text,
+            provenance_ids=["computed:rev:delta"],
+            db=mock_db,
+            merchant_id="demo",
+            tool_value_set={-25562.0, 100000.0, 74438.0},
+        )
+    assert all_valid, f"expected valid, got issues: {issues}"
+    assert "unverified" not in cleaned
+    assert "25,562" in cleaned
+
+
+def test_positive_value_still_rejected_when_no_magnitude_match(mock_db):
+    """Guard: a positive value not matching any magnitude in tool set must still be rejected.
+
+    ₹99,000 is chosen deliberately: it is >1% away from both 100000 (distance=1000,
+    tolerance=990) and 25562 (magnitude distance=73438), so neither the direct nor the
+    magnitude branch can rescue it.
+    """
+    text = 'Revenue was <cite ref="real_id">₹99,000</cite>.'
+    with patch("app.chat.validator._try_resolve", return_value=True):
+        cleaned, all_valid, issues = validate_and_clean(
+            text,
+            provenance_ids=["real_id"],
+            db=mock_db,
+            merchant_id="demo",
+            tool_value_set={-25562.0, 100000.0},
+        )
+    assert not all_valid
+    assert any("not found in tool results" in i for i in issues)
+
+
 # ---------------------------------------------------------------------------
 # Helper — fetches a real source_record_id from the DB; skips if none exists.
 # ---------------------------------------------------------------------------
@@ -204,3 +278,60 @@ class TestResolverRealDB:
             assert all_valid is True, (
                 f"Expected ref_id {ref_id!r} to resolve, but got issues: {issues}"
             )
+
+
+def test_calendar_date_labels_not_stripped(mock_db):
+    """Date labels (ISO, written, week-of) must survive the bare-number scan."""
+    cases = [
+        "Revenue on 2026-05-11 was strong.",
+        "On April 29, 2026 we saw a spike.",
+        "Week of May 11 was the peak.",
+        "Week of May 11, 2026 was the peak.",
+        "Week starting 2026-05-04 was flat.",
+        "Week ending 2026-05-11 recovered.",
+        "Dec 1, 2025 was the launch.",
+        "Numbers for Jan 5 are pending.",
+    ]
+    for txt in cases:
+        cleaned, _, _ = validate_and_clean(
+            txt, provenance_ids=[], db=mock_db, merchant_id="demo"
+        )
+        assert "*(uncited)*" not in cleaned, (
+            f"Date digit stripped in: {txt!r} -> {cleaned!r}"
+        )
+
+
+def test_proper_noun_year_not_stripped(mock_db):
+    """Years following capitalized words (campaign names, events) must not be stripped."""
+    cases = [
+        "Best results from Diwali Sale 2024 campaign.",
+        "Comparing Spring Launch 2023 to Summer Edition 2024.",
+        "The New Year Push 2024 campaign drove growth.",
+    ]
+    for txt in cases:
+        cleaned, _, _ = validate_and_clean(
+            txt, provenance_ids=[], db=mock_db, merchant_id="demo"
+        )
+        assert "*(uncited)*" not in cleaned, (
+            f"Proper-noun year stripped in: {txt!r} -> {cleaned!r}"
+        )
+
+
+def test_lowercase_preceding_word_still_strips_year(mock_db):
+    """Guard: years after single capitalized or lowercase words must still be stripped."""
+    cases = [
+        "Our data is from 2023.",         # sentence-initial "Our" (single cap word)
+        "The revenue 2024 figure.",        # sentence-initial "The" (single cap word)
+        "This 2024 result is surprising.", # single cap word
+        "revenue 2024 figure looks off.",  # lowercase preceding word
+    ]
+    # Note: "Last 2023" is intentionally NOT listed here — "last" is in _timeref_re
+    # as a time-reference prefix (protecting "last 30", "last 7"), so "Last 2023"
+    # is correctly treated as a time reference and survives the scan.
+    for txt in cases:
+        cleaned, valid, _ = validate_and_clean(
+            txt, provenance_ids=[], db=mock_db, merchant_id="demo"
+        )
+        assert not valid, (
+            f"Expected bare year to be flagged in: {txt!r} -> {cleaned!r}"
+        )

@@ -16,7 +16,14 @@ logger = logging.getLogger(__name__)
 TOOL_DEFINITIONS = [
     {
         "name": "list_entities",
-        "description": "List entities in the warehouse (orders, products, campaigns, shipments, etc.)",
+        "description": (
+            "List a SAMPLE of entities in the warehouse (orders, products, campaigns, shipments, etc.). "
+            "Returns up to `limit` rows (default 20) ordered by last_seen DESC. "
+            "This is a SAMPLE, NOT a count — `returned` reports how many rows were returned in this page, "
+            "which is capped by `limit` and is NOT the total number of entities of that type. "
+            "For 'how many X?' or any total-count question, use the `sql` tool with "
+            "SELECT COUNT(*) FROM entities WHERE entity_type = '...' AND merchant_id = :merchant_id instead."
+        ),
         "input_schema": {
             "type": "object",
             "properties": {
@@ -33,18 +40,24 @@ TOOL_DEFINITIONS = [
         "name": "query_metric",
         "description": (
             "Query a pre-defined business metric. Returns rows with provenance IDs. "
-            "Use this for revenue, ad_spend, rto_rate, contribution_margin, cac, average_order_value."
+            "Use this for revenue, ad_spend, rto_rate, contribution_margin, cac, average_order_value, refunds, roas. "
+            "Note: `revenue` already nets refunds out (refunds are stored as negative amounts). "
+            "To answer 'how much was refunded?' use the `refunds` metric instead — it returns gross refund total as a positive number. "
+            "Grain: `contribution_margin` is per ORDER (one row per order_number). "
+            "The warehouse has NO SKU-level events — do not relabel order numbers as SKUs. "
+            "Use `roas` for return-on-ad-spend questions — it returns revenue/ad_spend in a single cited row; do NOT divide revenue by ad_spend in prose, that produces an uncited number. "
+            "Use the 'orders' metric for 'how many orders?' questions — do NOT use sql COUNT(*) or list_entities for order counts."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "metric_name": {
                     "type": "string",
-                    "enum": ["revenue", "ad_spend", "rto_rate", "contribution_margin", "cac", "average_order_value"],
+                    "enum": ["revenue", "ad_spend", "rto_rate", "contribution_margin", "cac", "average_order_value", "refunds", "roas", "orders"],
                 },
                 "group_by": {
                     "type": "string",
-                    "enum": ["sku", "campaign", "courier", "date", "week", "month"],
+                    "enum": ["campaign", "courier", "date", "week", "month"],
                     "description": "Optional dimension to group results by.",
                 },
                 "time_range": {
@@ -164,7 +177,7 @@ def _list_entities(db: Session, merchant_id: str, entity_type: str, limit: int =
              "attributes": r[3], "last_seen": str(r[4])}
             for r in rows
         ],
-        "count": len(rows),
+        "returned": len(rows),
     }
 
 
@@ -223,16 +236,30 @@ def _compare(db: Session, merchant_id: str, metric_name: str,
     delta = val_b - val_a
     pct = (delta / val_a * 100) if val_a else None
 
-    # Give computed values synthetic provenance IDs so the model can cite them
-    computed_id = f"computed:{metric_name}:{period_a}vs{period_b}"
-    all_ids = list(set(a.provenance_ids + b.provenance_ids + [computed_id]))
+    # Give computed values distinct synthetic provenance IDs so the model can cite each independently
+    delta_id = f"computed:{metric_name}:delta:{period_a}vs{period_b}"
+    pct_id   = f"computed:{metric_name}:pct_change:{period_a}vs{period_b}"
+    all_ids = list(set(a.provenance_ids + b.provenance_ids + [delta_id, pct_id]))
 
     return {
-        "period_a": {"range": period_a, "value": val_a, "rows": a.rows, "provenance_ids": a.provenance_ids},
-        "period_b": {"range": period_b, "value": val_b, "rows": b.rows, "provenance_ids": b.provenance_ids},
+        "period_a": {
+            "range": period_a, "value": val_a, "rows": a.rows,
+            "provenance_ids": a.provenance_ids,
+        },
+        "period_b": {
+            "range": period_b, "value": val_b, "rows": b.rows,
+            "provenance_ids": b.provenance_ids,
+        },
         "delta": delta,
+        "delta_provenance_id": delta_id,
         "pct_change": pct,
-        "pct_change_provenance_id": computed_id,
+        "pct_change_provenance_id": pct_id,
+        "citation_hint": (
+            f"Cite period_a.value with a period_a.provenance_ids id; "
+            f"period_b.value with a period_b.provenance_ids id; "
+            f"delta ({delta}) with {delta_id!r}; "
+            f"pct_change ({pct}) with {pct_id!r}."
+        ),
         "all_provenance_ids": all_ids,
     }
 
@@ -241,13 +268,13 @@ def _write_note(db: Session, merchant_id: str, entity_natural_key: str, note: st
     from datetime import datetime
 
     from sqlalchemy import text
-    db.execute(
+    result = db.execute(
         text("""
             UPDATE entities
             SET attributes = jsonb_set(
                 attributes,
                 '{notes}',
-                COALESCE(attributes->'notes', '[]'::jsonb) || :note::jsonb
+                COALESCE(attributes->'notes', '[]'::jsonb) || CAST(:note AS jsonb)
             )
             WHERE merchant_id = :mid AND natural_key = :key
         """),
@@ -257,5 +284,7 @@ def _write_note(db: Session, merchant_id: str, entity_natural_key: str, note: st
             "note": json.dumps([{"text": note, "at": datetime.now(UTC).isoformat()}]),
         },
     )
+    if result.rowcount == 0:
+        return {"error": "Entity not found — no row matched natural_key and merchant_id"}
     db.commit()
     return {"status": "saved", "entity": entity_natural_key}

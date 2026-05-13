@@ -41,6 +41,26 @@ def _parse_url() -> dict:
     return {"user": user, "pw": pw, "host": host, "port": port, "db": db}
 
 
+def _coerce_id_list(value) -> list[str]:
+    if value is None:
+        return []
+    # numpy array: check via .size/.tolist to avoid __bool__ ambiguity
+    if hasattr(value, "size") and hasattr(value, "tolist"):
+        if value.size == 0:
+            return []
+        return [str(x) for x in value.tolist() if x is not None]
+    if isinstance(value, (list, tuple)):
+        return [str(x) for x in value if x is not None]
+    # pandas NA / float nan
+    try:
+        import pandas as pd
+        if pd.isna(value):
+            return []
+    except (TypeError, ValueError, ImportError):
+        pass
+    return [str(value)]
+
+
 def sandboxed_sql(query: str, merchant_id: str) -> tuple[list[dict], list[str]]:
     """Execute a SELECT-only query against the warehouse. Returns (rows, provenance_ids).
 
@@ -65,12 +85,12 @@ def sandboxed_sql(query: str, merchant_id: str) -> tuple[list[dict], list[str]]:
             )
         result = conn.execute(query_exec).fetchdf()
         rows = result.to_dict(orient="records")
-        prov_ids = []
+        prov_ids: list[str] = []
         if "provenance_ids" in result.columns:
             for row in rows:
-                ids = row.pop("provenance_ids", []) or []
+                ids = _coerce_id_list(row.pop("provenance_ids", None))
                 prov_ids.extend(ids)
-        return rows, list(set(prov_ids))
+        return rows, sorted(set(prov_ids))
     finally:
         conn.close()
 

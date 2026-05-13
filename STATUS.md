@@ -1,7 +1,7 @@
 # Project Status
 
 **Last updated:** 2026-05-13
-**Phase:** Complete — v0.1.0
+**Phase:** Complete — v0.1.1 (post-adversarial hardening)
 
 ## What's built
 
@@ -28,6 +28,7 @@
 | Seed data | ✅ | demo: 80 orders, 30d Meta (ROAS 1.35x), 80 shipments; demo2: 5 orders for RLS isolation |
 | RLS hardening | ✅ | SET LOCAL GUC, no IS NULL escape, called at ingest + tools + agent |
 | Eval suite | ✅ | 19 golden questions (incl. 3 adversarial), citation coverage ≥80%, accuracy ≥70% |
+| Adversarial hardening | ✅ | 7-round loop; 0 Slytherin points in final round; 116 unit tests green |
 | CI | ✅ | GitHub Actions: lint + pytest (eval skipped when OPENAI_API_KEY=dummy) |
 | README | ✅ | All 9 brief questions answered; real agent run log (1.35x ROAS, ₹4,860/month) |
 
@@ -42,6 +43,32 @@
 - **Auth:** Shiprocket SHIPROCKET_TOKEN from .env; Shopify private app; Meta long-lived token
 - **Idempotency:** MD5 event IDs keyed on (merchant_id, entity_id, event_type, occurred_at)
 - **Ingest payload preservation:** on re-ingest conflict, payload is preserved (not overwritten); only `fetched_at` and `run_id` are updated — protects provenance round-trip from partial API responses
+
+## Adversarial hardening (7 rounds)
+
+Fixes applied through iterative adversarial testing (Opus adversary → Opus plan → Sonnet impl → Opus review):
+
+- **Comma-formatted numbers** split across commas (30,412 → "30" + "412") — fixed in `bare_number_re`
+- **Time-period words** ("14 days", "30 days") stripped as bare numbers — fixed in `_timeref_re`
+- **Year numbers** in claims stripped — fixed in `_is_yearlike` with context-aware exemption
+- **Calendar-period queries** (Q1, lifetime, today, MTD, YTD) answered with wrong rolling-window numbers — system prompt now refuses with explicit guidance
+- **Compare tool delta/pct_change** had shared provenance ID — split into `delta_provenance_id` and `pct_change_provenance_id`
+- **Refunds metric** missing — added to catalog (`SUM(-ev.amount)` where `event_type='refund'`)
+- **ROAS metric** missing — added to catalog (two-CTE pattern, combined provenance)
+- **Orders metric** missing — added to catalog (`COUNT(DISTINCT entity_id)` on `order_revenue` events)
+- **SKU/product grain** queries — system prompt explicitly refuses; no SKU-level events in schema
+- **`list_entities` count confusion** — renamed `count` → `returned`; prompt says it's a sample not a total
+- **DuckDB JSONB syntax** — `attributes->>'key'` crashed; fixed to `json_extract_string(attributes, '$.order_number')`
+- **NULL campaign group** — `revenue + group_by=campaign` returned NULL-named row; now raises descriptive error
+- **Rule 10** — specific entity lookup must use `sql` with `json_extract_string`, not `list_entities`
+- **Rule 11** — derived arithmetic (averages, percentages, per-day rates) prohibited in prose
+- **RTO ≠ refund rate** — explicit WARNING added to system prompt
+- **Impressions/clicks** columns exposed from `ad_spend` metric in system prompt
+- **Date string stripping** — ISO dates, written dates, week labels protected in `excluded_spans`
+- **Proper-noun years** ("Diwali Sale 2024") — two-consecutive-capitalized-word heuristic in `_is_yearlike`
+- **Compare tool semantics** — system prompt: `compare(7d, 14d)` is overlapping trailing windows, NOT WoW
+- **DuckDB SQL gotchas** — `list()`/`array_agg()` not `json_agg()`; qualify `attributes` with table alias
+- **`write_note` SQL** — `CAST(:note AS jsonb)` fixes SQLAlchemy parameter collision; rowcount check added
 
 ## Known limitations
 

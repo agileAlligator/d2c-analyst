@@ -17,7 +17,11 @@ _SQL_SIGNAL_RE = re.compile(
 _DATE_EXPR_RE = re.compile(
     r"\b(\d+\s*days?|last\s+week|last\s+month|this\s+week|yesterday|ytd|mtd|30d|7d|14d|90d)\b", re.I
 )
-_NEGATIVE_RE = re.compile(r"\bnegative\b", re.I)
+_NEGATIVE_RE = re.compile(
+    r"\bnegative\s+(?:margin|contribution|cm|roas|revenue|returns?)\b"
+    r"|\b(?:margin|contribution)\s+(?:is\s+)?negative\b",
+    re.I,
+)
 
 
 def extract_signals(query: str, history: list, turn: int) -> dict:

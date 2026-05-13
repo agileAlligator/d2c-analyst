@@ -60,8 +60,9 @@ TOOL_DEFINITIONS = [
         "name": "sql",
         "description": (
             "Run a read-only SELECT query against the warehouse. "
+            "Use ONLY for questions query_metric cannot answer (e.g. ranking, ORDER BY, specific filters). "
             "Available tables: entities, events, links, provenance. "
-            "Always include provenance_ids in your SELECT for citation."
+            "Full column schema and a worked example are in the system prompt."
         ),
         "input_schema": {
             "type": "object",
@@ -133,7 +134,7 @@ def dispatch_tool(
         elif tool_name == "sql":
             return _sql(db, merchant_id, **tool_input)
         elif tool_name == "get_raw":
-            return _get_raw(db, **tool_input)
+            return _get_raw(db, merchant_id, **tool_input)
         elif tool_name == "compare":
             return _compare(db, merchant_id, **tool_input)
         elif tool_name == "write_note":
@@ -190,7 +191,7 @@ _RAW_TABLES = [
 ]
 
 
-def _get_raw(db: Session, provenance_id: str) -> dict:
+def _get_raw(db: Session, merchant_id: str, provenance_id: str) -> dict:
     """Resolve a provenance_id to its source payload by scanning all raw tables."""
     parts = provenance_id.split(":", 1)
     table_hint = parts[0] if len(parts) > 1 else ""
@@ -198,7 +199,7 @@ def _get_raw(db: Session, provenance_id: str) -> dict:
     # Try tables with matching hint first
     ordered = sorted(_RAW_TABLES, key=lambda t: (0 if table_hint in t else 1))
     for table in ordered:
-        payload = get_raw_payload(db, table, provenance_id)
+        payload = get_raw_payload(db, table, provenance_id, merchant_id)
         if payload is not None:
             return {"raw_table": table, "raw_record_id": provenance_id, "payload": payload}
 

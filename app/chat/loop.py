@@ -22,12 +22,48 @@ logger = logging.getLogger(__name__)
 
 MAX_TURNS = 12
 MAX_RETRIES = 2
-SYSTEM_PROMPT = (Path(__file__).parent / "prompts" / "system.txt").read_text()
+_SYSTEM_PROMPT_TEMPLATE = (Path(__file__).parent / "prompts" / "system.txt").read_text()
+_system_prompt_cache: str | None = None
 
 _client = None
 _backend: str | None = None  # "" or "openai"
 
 _router = HeuristicRouter()
+
+
+def _get_system_prompt() -> str:
+    global _system_prompt_cache
+    if _system_prompt_cache is None:
+        from app.warehouse.db import get_schema_description
+        _system_prompt_cache = _SYSTEM_PROMPT_TEMPLATE.format(
+            warehouse_schema=get_schema_description()
+        )
+    return _system_prompt_cache
+
+
+def _collect_tool_numbers(obj, acc: set) -> None:
+    if isinstance(obj, dict):
+        for v in obj.values():
+            _collect_tool_numbers(v, acc)
+    elif isinstance(obj, list):
+        for item in obj:
+            _collect_tool_numbers(item, acc)
+    elif isinstance(obj, bool):
+        pass
+    elif isinstance(obj, (int, float)):
+        acc.add(float(obj))
+    elif isinstance(obj, str):
+        try:
+            cleaned = obj.replace(",", "").replace("₹", "").replace("$", "").strip()
+            acc.add(float(cleaned))
+        except ValueError:
+            pass
+    else:
+        # Decimal and other numeric-like objects (Postgres Numeric columns)
+        try:
+            acc.add(float(obj))
+        except (ValueError, TypeError):
+            pass
 
 
 def get_client():
@@ -111,11 +147,12 @@ def _run_openai(question, db, merchant_id, history, decision: RoutingDecision):
 
 
 def _openai_attempt(question, db, merchant_id, history, model, oai_tools, client):
-    messages: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT}]
+    messages: list[dict] = [{"role": "system", "content": _get_system_prompt()}]
     messages += list(history or [])
     messages.append({"role": "user", "content": question})
     all_provenance_ids: list[str] = []
     tool_trace: list[dict] = []
+    tool_value_set: set[float] = set()
 
     for attempt in range(MAX_RETRIES + 1):
         for _ in range(MAX_TURNS):
@@ -142,6 +179,7 @@ def _openai_attempt(question, db, merchant_id, history, model, oai_tools, client
                     if isinstance(result, dict):
                         prov = result.get("provenance_ids") or result.get("all_provenance_ids") or []
                         all_provenance_ids.extend(prov)
+                    _collect_tool_numbers(result, tool_value_set)
                     messages.append({
                         "role": "tool",
                         "tool_call_id": tc.id,
@@ -150,14 +188,21 @@ def _openai_attempt(question, db, merchant_id, history, model, oai_tools, client
 
             elif finish == "stop":
                 raw_answer = msg.content or ""
-                cleaned, valid, issues = validate_and_clean(raw_answer, all_provenance_ids, db)
+                cleaned, valid, issues = validate_and_clean(
+                    raw_answer, all_provenance_ids, db,
+                    merchant_id=merchant_id, tool_value_set=tool_value_set,
+                )
                 if valid or attempt >= MAX_RETRIES:
                     return _result(cleaned, valid, issues, tool_trace, all_provenance_ids)
                 messages.append({"role": "assistant", "content": raw_answer})
                 messages.append({"role": "user", "content": _retry_prompt(issues)})
-                break
+                break  # to outer loop for citation retry
             else:
-                break
+                # Unexpected finish reason (e.g. length, content_filter) — don't retry
+                return _timeout_result(tool_trace, all_provenance_ids, reason=f"finish:{finish or 'none'}")
+        else:
+            # Inner loop exhausted MAX_TURNS without producing an answer — don't re-attempt
+            return _timeout_result(tool_trace, all_provenance_ids, reason="max_turns_exceeded")
 
     return _timeout_result(tool_trace, all_provenance_ids)
 
@@ -169,6 +214,7 @@ def _run_openai_compat(question, db, merchant_id, history):
     messages = list(history or []) + [{"role": "user", "content": question}]
     all_provenance_ids: list[str] = []
     tool_trace: list[dict] = []
+    tool_value_set: set[float] = set()
     client = get_client()
 
     for attempt in range(MAX_RETRIES + 1):
@@ -176,7 +222,7 @@ def _run_openai_compat(question, db, merchant_id, history):
             response = client.messages.create(
                 model="gpt-4o",
                 max_tokens=4096,
-                system=SYSTEM_PROMPT,
+                system=_get_system_prompt(),
                 tools=TOOL_DEFINITIONS,
                 messages=messages,
             )
@@ -191,6 +237,7 @@ def _run_openai_compat(question, db, merchant_id, history):
                     if isinstance(result, dict):
                         prov = result.get("provenance_ids") or result.get("all_provenance_ids") or []
                         all_provenance_ids.extend(prov)
+                    _collect_tool_numbers(result, tool_value_set)
                     tool_results.append({
                         "type": "tool_result",
                         "tool_use_id": block.id,
@@ -205,7 +252,10 @@ def _run_openai_compat(question, db, merchant_id, history):
                 raw_answer = "".join(
                     block.text for block in response.content if hasattr(block, "text")
                 )
-                cleaned, valid, issues = validate_and_clean(raw_answer, all_provenance_ids, db)
+                cleaned, valid, issues = validate_and_clean(
+                    raw_answer, all_provenance_ids, db,
+                    merchant_id=merchant_id, tool_value_set=tool_value_set,
+                )
                 if valid or attempt >= MAX_RETRIES:
                     r = _result(cleaned, valid, issues, tool_trace, all_provenance_ids)
                     r["routing"] = {
@@ -219,9 +269,11 @@ def _run_openai_compat(question, db, merchant_id, history):
                     {"role": "assistant", "content": response.content},
                     {"role": "user", "content": _retry_prompt(issues)},
                 ]
-                break
+                break  # to outer loop for citation retry
             else:
-                break
+                return _timeout_result(tool_trace, all_provenance_ids, reason=f"stop_reason:{response.stop_reason}")
+        else:
+            return _timeout_result(tool_trace, all_provenance_ids, reason="max_turns_exceeded")
 
     return _timeout_result(tool_trace, all_provenance_ids)
 

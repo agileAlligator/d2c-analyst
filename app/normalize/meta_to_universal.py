@@ -44,15 +44,26 @@ def normalize_insights(db: Session, merchant_id: str) -> int:
 def _upsert_insight(db: Session, merchant_id: str, raw: RawMetaInsight):
     p = raw.payload
     campaign_id = str(p.get("campaign_id", "unknown"))
-    ad_id = str(p.get("ad_id", "unknown"))
+    adset_id = str(p.get("adset_id", ""))
+    ad_id = str(p.get("ad_id", ""))
     date = p.get("date_start", "")
 
-    # Ensure campaign entity exists (may not have been pulled separately)
-    campaign_key = f"meta:campaign:{campaign_id}"
-    entity_id = _upsert_entity(db, merchant_id, "ad_campaign", campaign_key, "meta", {
+    # Use the finest grain available so multiple ads in the same campaign/day
+    # don't collapse to the same entity (and deduplicate spend via MD5 event_id).
+    if ad_id and ad_id != "unknown" and ad_id != "":
+        entity_key = f"meta:ad:{ad_id}"
+        entity_type = "ad_creative"
+    elif adset_id and adset_id != "":
+        entity_key = f"meta:adset:{adset_id}"
+        entity_type = "ad_set"
+    else:
+        entity_key = f"meta:campaign:{campaign_id}"
+        entity_type = "ad_campaign"
+
+    entity_id = _upsert_entity(db, merchant_id, entity_type, entity_key, "meta", {
         "meta_campaign_id": campaign_id,
-        "name": p.get("campaign_name"),
-        "adset_id": p.get("adset_id"),
+        "name": p.get("campaign_name"),  # preserved so group_by="campaign" still works
+        "adset_id": adset_id,
         "adset_name": p.get("adset_name"),
         "ad_id": ad_id,
         "ad_name": p.get("ad_name"),

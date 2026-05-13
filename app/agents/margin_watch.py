@@ -23,6 +23,13 @@ class MarginWatchAgent(BaseAgent):
         flagged = []
         for row in current.rows:
             order_id = row.get("order_number") or row.get("order_id")
+            # Skip rows with no order number (pure refund entities or unresolved joins)
+            if not order_id:
+                continue
+            revenue = Decimal(str(row.get("revenue") or 0))
+            # Skip rows where revenue itself is negative (standalone refund, no matching order)
+            if revenue < 0:
+                continue
             margin = Decimal(str(row.get("contribution_margin") or 0))
             prov_ids = row.get("provenance_ids") or current.provenance_ids
 
@@ -54,22 +61,52 @@ class MarginWatchAgent(BaseAgent):
 
                 impact = abs(float(margin))
                 rev_f = float(revenue)
-                self._proposals.append(Proposal(
+                row = item["row"]
+
+                # Derive variant_id and per-unit price from line_items when available.
+                # Shopify line_items is a list; we pick the item with the highest price
+                # (the "primary" line item) to target the price adjustment.
+                line_items = row.get("line_items") or []
+                variant_id = None
+                unit_price = revenue  # fallback: treat whole order as qty-1
+                quantity = Decimal("1")
+                if line_items:
+                    primary = max(line_items, key=lambda li: float(li.get("price") or 0))
+                    variant_id = primary.get("variant_id")
+                    unit_price = Decimal(str(primary.get("price") or revenue))
+                    quantity = Decimal(str(primary.get("quantity") or 1))
+                    if quantity <= 0:
+                        quantity = Decimal("1")
+
+                # Per-unit price increase to cover the full margin gap.
+                # new_unit_price = unit_price + (|margin| / quantity)
+                per_unit_increase = abs(margin) / quantity
+                new_unit_price = unit_price + per_unit_increase
+
+                # entity_key targets the product variant, not the order.
+                if variant_id:
+                    entity_key = f"sku:{variant_id}"
+                else:
+                    # Fallback: we don't have a variant ID, flag the order instead.
+                    entity_key = f"order:{item['order_id']}"
+
+                self.emit_proposal(Proposal(
                     action_type="raise_price",
-                    entity_key=f"order:{item['order_id']}",
+                    entity_key=entity_key,
                     expected_inr_impact=impact,
                     reasoning=(
                         f"Order {item['order_id']} has contribution margin of "
                         f"₹{margin:,.2f} (revenue ₹{revenue:,.2f}, "
                         f"shipping ₹{shipping:,.2f}, RTO cost ₹{rto:,.2f}). "
-                        f"Raising the product price by {impact / max(rev_f, 1) * 100:.1f}% "
-                        f"would move this order to breakeven."
+                        f"Raising the variant price from ₹{unit_price:,.2f} to "
+                        f"₹{new_unit_price:,.2f} (+₹{per_unit_increase:,.2f}/unit × "
+                        f"{quantity} units) would move this order to breakeven."
                     ),
                     provenance_ids=item["prov_ids"][:5],
                     would_do_api_call={
                         "connector": "shopify",
                         "endpoint": "PUT /admin/api/2024-01/variants/{variant_id}.json",
-                        "body": {"variant": {"price": str(revenue + abs(margin))}},
+                        "body": {"variant": {"price": str(new_unit_price)}},
                         "NOT_SENT": True,
                     },
                 ))
@@ -101,7 +138,7 @@ class MarginWatchAgent(BaseAgent):
 
         self.log(f"Courier '{courier}' has RTO rate {rto_rate:.1%} ({rto_count} RTOs).")
 
-        self._proposals.append(Proposal(
+        self.emit_proposal(Proposal(
             action_type="switch_courier",
             entity_key=f"courier:{courier}",
             expected_inr_impact=est_impact,
@@ -143,7 +180,7 @@ class MarginWatchAgent(BaseAgent):
         self.log(f"Blended ROAS (14d): {blended_roas:.2f}x (spend ₹{total_spend:,.0f})")
 
         if blended_roas < 2.0:
-            self._proposals.append(Proposal(
+            self.emit_proposal(Proposal(
                 action_type="pause_adset",
                 entity_key="meta:all_campaigns",
                 expected_inr_impact=total_spend * 0.3,  # rough: cutting 30% of spend at low ROAS

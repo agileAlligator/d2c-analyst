@@ -28,9 +28,12 @@ def _link_shopify_shiprocket(db: Session, merchant_id: str) -> int:
         FROM entities e_order
         JOIN entities e_ship
             ON e_order.merchant_id = e_ship.merchant_id
-           AND e_order.attributes->>'order_number' IS NOT NULL
            AND e_ship.attributes->>'channel_order_id' IS NOT NULL
-           AND e_order.attributes->>'order_number' = e_ship.attributes->>'channel_order_id'
+           AND (
+               e_order.attributes->>'order_number'   = e_ship.attributes->>'channel_order_id'
+               OR e_order.attributes->>'shopify_order_id' = e_ship.attributes->>'channel_order_id'
+               OR e_order.attributes->>'id'           = e_ship.attributes->>'channel_order_id'
+           )
         WHERE e_order.merchant_id = :mid
           AND e_order.entity_type = 'order'
           AND e_ship.entity_type  = 'shipment'
@@ -74,8 +77,21 @@ def _link_meta_shopify(db: Session, merchant_id: str) -> int:
             codes = _json.loads(codes_raw) if isinstance(codes_raw, str) else codes_raw
         except Exception:
             continue
-        # Only link if a discount code contains the campaign_id as a substring
-        if any(campaign_id.lower() in str(c).lower() for c in codes):
+        # Skip placeholder or too-short campaign IDs that cause noise
+        if (not campaign_id
+                or len(campaign_id) < 4
+                or campaign_id.lower() in ("unknown", "none", "null", "")):
+            continue
+
+        cid = campaign_id.lower()
+        matched = False
+        for c in codes:
+            code_str = str(c).lower().strip()
+            # Match: exact equality OR campaign_id is a whitespace-separated token in the code
+            if cid == code_str or cid in code_str.split():
+                matched = True
+                break
+        if matched:
             _upsert_link(db, merchant_id, order_eid, camp_eid, "order_campaign", 0.6, "discount_code_prefix")
             count += 1
 

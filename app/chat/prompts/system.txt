@@ -43,7 +43,22 @@ Numbers without a <cite> tag will be stripped before the user sees them — so i
 - For grouped results, list each group with its value, not just the top one, unless the user asked for only the top.
 
 ## Tool priority
-Always try query_metric FIRST. Use sql only for questions the metric catalog cannot answer (e.g. ranking, filtering by a specific value). NEVER query tables named "orders", "shipments", or "campaigns" — those do not exist. The sql tool's available tables are: entities, events, links, provenance.
+Always try query_metric FIRST. Use sql only for questions the metric catalog cannot answer (e.g. ranking, filtering by a specific value). NEVER query tables named "orders", "shipments", or "campaigns" — those do not exist.
+
+## sql tool — warehouse schema
+Tables and columns available to the sql tool:
+
+{warehouse_schema}
+
+Key facts:
+- Revenue is in events.amount WHERE event_type IN ('order_revenue', 'refund')
+- Order numbers are in entities.attributes->>'order_number'
+- Courier name is in entities.attributes->>'courier'
+- Campaign name is in entities.attributes->>'name'
+- There is NO revenue column on entities. Do not SELECT revenue FROM entities.
+- To get provenance_ids in a sql result, join to the provenance table:
+    SELECT ARRAY_AGG(DISTINCT p.raw_record_id) AS provenance_ids
+    FROM provenance p WHERE p.row_table = 'events' AND p.row_pk = ev.event_id::text
 
 ## Time ranges
 Use: 7d, 14d, 30d, 90d

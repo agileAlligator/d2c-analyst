@@ -26,7 +26,7 @@ def record(
         raw_record_id=raw_record_id,
         transform_id=transform_id,
         ingested_at=datetime.now(UTC),
-    ).on_conflict_do_nothing()
+    ).on_conflict_do_nothing(constraint="uq_provenance_dedup")
     db.execute(stmt)
 
 
@@ -46,10 +46,19 @@ def get_provenance(db: Session, row_table: str, row_pk: str) -> list[dict]:
     ]
 
 
-def get_raw_payload(db: Session, raw_table: str, raw_record_id: str) -> dict | None:
+_ALLOWED_RAW_TABLES = {
+    "raw_shopify_orders", "raw_shopify_products", "raw_shopify_refunds",
+    "raw_meta_insights", "raw_meta_campaigns", "raw_shiprocket_shipments",
+    "raw_shopify_customers",
+}
+
+
+def get_raw_payload(db: Session, raw_table: str, raw_record_id: str, merchant_id: str) -> dict | None:
     from sqlalchemy import text
+    if raw_table not in _ALLOWED_RAW_TABLES:
+        raise ValueError(f"raw_table not allowed: {raw_table!r}")
     row = db.execute(
-        text(f"SELECT payload FROM {raw_table} WHERE source_record_id = :rid LIMIT 1"),
-        {"rid": raw_record_id},
+        text(f"SELECT payload FROM {raw_table} WHERE merchant_id = :mid AND source_record_id = :rid LIMIT 1"),
+        {"mid": merchant_id, "rid": raw_record_id},
     ).fetchone()
     return row[0] if row else None

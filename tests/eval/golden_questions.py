@@ -8,13 +8,11 @@ Each question has:
 - expected_metrics: metric names expected to appear in tool calls
 
 Ground truth from seeded demo merchant (80 orders, May 2026):
-  revenue 30d:  ₹41,646     revenue 7d:  ₹11,491
-  ad_spend 30d: ₹31,465.35  ad_spend 14d: ₹14,526.97
-    (computed by replaying RNG(42) through 320 order calls + 9 refund calls
-     before the Meta insights loop; 90 uniform(180,480) draws for 30d,
-     42 draws for 14d)
-  ROAS 14d: ~1.37x (below 2.0 threshold — agent fires)
-  orders 30d:   ~10          BlueDart RTO rate: 60%  (highest)
+  revenue 30d:  ₹37,053     revenue 7d:  ₹11,491
+    (includes refund events with negative amounts; uses subtotal_price)
+  ad_spend 30d: ₹30,411.51  ad_spend 14d: ₹13,739.66
+  ROAS 14d: ~1.35x (below 2.0 threshold — agent fires)
+  orders 30d:   38           Shadowfax RTO rate: 47.8% (highest)
   CM 7d order 1063: ₹-8.03  (negative margin)
 """
 import re
@@ -53,10 +51,10 @@ GOLDEN_QUESTIONS: list[GoldenQuestion] = [
     # ── Revenue ──────────────────────────────────────────────────────────
     GoldenQuestion(
         question="What was total revenue in the last 30 days?",
-        description="Basic revenue query — answer must contain ~₹41,646",
+        description="Basic revenue query — answer must contain ~₹37,053",
         expected_metrics=["revenue"],
         answer_checks=[
-            _number_in_range(40_000, 43_000),  # ₹41,646 ± variance
+            _number_in_range(35_000, 39_000),  # ₹37,053 ± variance
             _mentions_any("₹", "INR", "revenue"),
         ],
     ),
@@ -72,18 +70,18 @@ GOLDEN_QUESTIONS: list[GoldenQuestion] = [
     # ── Ad spend ─────────────────────────────────────────────────────────
     GoldenQuestion(
         question="How much did we spend on Meta Ads in the last 30 days?",
-        description="Ad spend query — must cite raw_meta_insights, ₹31,465.35",
+        description="Ad spend query — must cite raw_meta_insights, ₹30,411.51",
         expected_metrics=["ad_spend"],
         answer_checks=[
-            _number_in_range(26_745, 36_185),  # ₹31,465.35 ± 15%
+            _number_in_range(25_849, 34_973),  # ₹30,411.51 ± 15%
         ],
     ),
     GoldenQuestion(
         question="How much did we spend on Meta Ads in the last 14 days?",
-        description="14d ad spend — partial window, ₹14,526.97",
+        description="14d ad spend — partial window, ₹13,739.66",
         expected_metrics=["ad_spend"],
         answer_checks=[
-            _number_in_range(12_347, 16_706),  # ₹14,526.97 ± 15%
+            _number_in_range(11_678, 15_801),  # ₹13,739.66 ± 15%
             _mentions_any("Meta", "ad", "spend"),
         ],
     ),
@@ -108,11 +106,11 @@ GOLDEN_QUESTIONS: list[GoldenQuestion] = [
     ),
     GoldenQuestion(
         question="Which courier has the highest RTO rate?",
-        description="Courier ranking — BlueDart has 60% RTO rate (highest)",
+        description="Courier ranking — Shadowfax has ~47.8% RTO rate (highest)",
         expected_metrics=["rto_rate"],
         answer_checks=[
-            _mentions_any("BlueDart"),
-            _number_in_range(50, 70),  # 60% RTO rate
+            _mentions_any("Shadowfax"),
+            _number_in_range(40, 55),  # ~47.8% RTO rate
         ],
     ),
 
@@ -131,7 +129,8 @@ GOLDEN_QUESTIONS: list[GoldenQuestion] = [
         description="Negative CM — order 1063 has ₹-8.03 margin",
         expected_metrics=["contribution_margin"],
         answer_checks=[
-            _mentions_any("1063", "negative", "-8", "-₹8"),
+            _mentions_any("1063"),
+            _mentions_any("-8", "−8", "₹-8", "-₹8", "negative margin"),
         ],
     ),
     GoldenQuestion(
@@ -139,7 +138,8 @@ GOLDEN_QUESTIONS: list[GoldenQuestion] = [
         description="Negative CM last month — tests Shopify↔Shiprocket join",
         expected_metrics=["contribution_margin"],
         answer_checks=[
-            _mentions_any("negative", "margin", "₹"),
+            _mentions_any("negative", "margin"),
+            lambda a: bool(__import__('re').search(r"-\s*₹?\s*\d+|\d+\s*order", a, __import__('re').IGNORECASE)),
         ],
     ),
 
@@ -169,8 +169,8 @@ GOLDEN_QUESTIONS: list[GoldenQuestion] = [
         description="Period comparison — tests compare tool, both periods cited",
         expected_metrics=["revenue"],
         answer_checks=[
-            _number_in_range(10_000, 13_000),   # 7d value
-            _number_in_range(40_000, 43_000),   # 30d value
+            _number_in_range(10_000, 13_000),   # 7d value ~₹11,491
+            _number_in_range(35_000, 39_000),   # 30d value ~₹37,053
         ],
     ),
 

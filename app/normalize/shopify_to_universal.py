@@ -42,12 +42,12 @@ def _upsert_order(db: Session, merchant_id: str, raw: RawShopifyOrder):
     prov_record(db, merchant_id, "entities", str(entity_id),
                 "raw_shopify_orders", raw.source_record_id, TRANSFORM_ID)
 
-    # Revenue event
-    total = Decimal(str(p.get("total_price", "0")))
+    # Revenue event — use subtotal_price (goods revenue only), fall back to total_price
+    subtotal = Decimal(str(p.get("subtotal_price") or p.get("total_price") or "0"))
     occurred_at = _parse_dt(p.get("created_at"))
-    if occurred_at and total > 0:
+    if occurred_at and subtotal > 0:
         event_id = _upsert_event(db, merchant_id, entity_id, "order_revenue", occurred_at,
-                                  total, p.get("currency", "INR"), None, {
+                                  subtotal, p.get("currency", "INR"), None, {
                                       "subtotal": str(p.get("subtotal_price", "0")),
                                       "shipping": str(p.get("total_shipping_price_set", {})
                                                        .get("shop_money", {}).get("amount", "0")),

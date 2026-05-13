@@ -115,20 +115,20 @@ class TestAccuracy:
     """Answer content matches known ground truth from seeded data."""
 
     def test_revenue_30d_ballpark(self):
-        """30d revenue should be ~₹41,646."""
+        """30d revenue should be ~₹37,053 (includes refunds, uses subtotal_price)."""
         r = _run_question("What was total revenue in the last 30 days?")
         import re
         raw = re.findall(r"[\d,]+(?:\.\d+)?", r["answer"])
         nums = [float(n.replace(",", "")) for n in raw if n.replace(",", "").replace(".", "").isdigit()]
-        assert any(40_000 <= n <= 43_000 for n in nums), (
-            f"Expected ~41646 in answer, got numbers: {nums}\nAnswer: {r['answer']}"
+        assert any(35_000 <= n <= 39_000 for n in nums), (
+            f"Expected ~37053 in answer, got numbers: {nums}\nAnswer: {r['answer']}"
         )
 
-    def test_highest_rto_courier_is_bluedart(self):
-        """BlueDart has 60% RTO rate — highest of all couriers."""
+    def test_highest_rto_courier_is_shadowfax(self):
+        """Shadowfax has ~47.8% RTO rate — highest of all couriers."""
         r = _run_question("Which courier has the highest RTO rate?")
-        assert "BlueDart" in r["answer"], (
-            f"Expected BlueDart (60% RTO) to be named. Answer: {r['answer']}"
+        assert "Shadowfax" in r["answer"], (
+            f"Expected Shadowfax (47.8% RTO) to be named. Answer: {r['answer']}"
         )
 
     def test_negative_cm_order_1063(self):
@@ -160,15 +160,15 @@ class TestAccuracy:
             )
 
     def test_period_comparison_contains_both_values(self):
-        """Comparison answer must contain values for both 7d (~11,491) and 30d (~41,646)."""
+        """Comparison answer must contain values for both 7d (~11,491) and 30d (~37,053)."""
         r = _run_question("Compare revenue between the last 7 days and the last 30 days.")
         import re
         raw = re.findall(r"[\d,]+(?:\.\d+)?", r["answer"])
         nums = [float(n.replace(",", "")) for n in raw if n.replace(",", "").replace(".", "").isdigit()]
         has_7d = any(10_000 <= n <= 13_000 for n in nums)
-        has_30d = any(40_000 <= n <= 43_000 for n in nums)
+        has_30d = any(35_000 <= n <= 39_000 for n in nums)
         assert has_7d and has_30d, (
-            f"Expected both 7d (~11491) and 30d (~41646) values. Got: {nums}\nAnswer: {r['answer']}"
+            f"Expected both 7d (~11491) and 30d (~37053) values. Got: {nums}\nAnswer: {r['answer']}"
         )
 
     def test_cm_7d_includes_order_1063(self):
@@ -234,6 +234,10 @@ class TestFullScorecardAndWrite:
         total_cited = 0
         accuracy_pass = 0
         accuracy_total = 0
+        non_adversarial_valid = 0
+        non_adversarial_total = 0
+        adversarial_valid = 0
+        adversarial_total = 0
 
         for gq in GOLDEN_QUESTIONS:
             r = _run_question(gq.question)
@@ -241,6 +245,15 @@ class TestFullScorecardAndWrite:
             if valid:
                 valid_count += 1
             total_cited += r["cited_count"]
+            is_adversarial = "ADVERSARIAL" in gq.description
+            if is_adversarial:
+                adversarial_total += 1
+                if valid:
+                    adversarial_valid += 1
+            else:
+                non_adversarial_total += 1
+                if valid:
+                    non_adversarial_valid += 1
 
             # Run answer_checks
             check_results = []
@@ -254,6 +267,7 @@ class TestFullScorecardAndWrite:
             row = {
                 "question": gq.question[:60],
                 "description": gq.description,
+                "is_adversarial": is_adversarial,
                 "valid": valid,
                 "cited_count": r["cited_count"],
                 "issues": r["issues"],
@@ -285,8 +299,16 @@ class TestFullScorecardAndWrite:
         p95 = latencies[int(len(latencies) * 0.95)]
         print(f"Latency P50: {p50}s  P95: {p95}s")
 
+        non_adv_pct = non_adversarial_valid / non_adversarial_total * 100 if non_adversarial_total else 100
+        adv_pct = adversarial_valid / adversarial_total * 100 if adversarial_total else 100
+
+        print(f"Non-adversarial citation: {non_adversarial_valid}/{non_adversarial_total} ({non_adv_pct:.0f}%)")
+        print(f"Adversarial citation:     {adversarial_valid}/{adversarial_total} ({adv_pct:.0f}%)")
+
         RESULTS_FILE.write_text(json.dumps({
             "citation_coverage_pct": citation_pct,
+            "non_adversarial_citation_pct": non_adv_pct,
+            "adversarial_citation_pct": adv_pct,
             "accuracy_pct": accuracy_pct,
             "valid_count": valid_count,
             "total_questions": n,
@@ -298,5 +320,9 @@ class TestFullScorecardAndWrite:
             "results": results,
         }, indent=2))
 
-        assert citation_pct >= 80, f"Citation coverage {citation_pct:.0f}% below 80% target"
+        assert non_adv_pct >= 100, (
+            f"Non-adversarial citation coverage {non_adv_pct:.0f}% — must be 100%. "
+            f"Failing questions: {[r['question'] for r in results if not r['valid'] and 'ADVERSARIAL' not in r.get('description','')]}"
+        )
+        assert adv_pct >= 66, f"Adversarial citation coverage {adv_pct:.0f}% below 66% floor"
         assert accuracy_pct >= 70, f"Accuracy {accuracy_pct:.0f}% below 70% target"

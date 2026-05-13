@@ -1,13 +1,13 @@
 {
-  "citation_coverage_pct": 100.0,
-  "accuracy_pct": 100.0,
-  "valid_count": 16,
-  "total_questions": 16,
-  "total_cited_numbers": 35,
-  "accuracy_pass": 25,
-  "accuracy_total": 25,
-  "p50_latency_s": 2.26,
-  "p95_latency_s": 4.29,
+  "citation_coverage_pct": 78.94736842105263,
+  "accuracy_pct": 82.14285714285714,
+  "valid_count": 15,
+  "total_questions": 19,
+  "total_cited_numbers": 34,
+  "accuracy_pass": 23,
+  "accuracy_total": 28,
+  "p50_latency_s": 2.68,
+  "p95_latency_s": 34.59,
   "results": [
     {
       "question": "What was total revenue in the last 30 days?",
@@ -15,28 +15,16 @@
       "valid": true,
       "cited_count": 1,
       "issues": [],
-      "latency_s": 1.73,
+      "latency_s": 1.98,
       "tool_calls": 1,
       "accuracy_checks": [
-        true,
+        false,
         true
       ]
     },
     {
       "question": "What was total revenue in the last 7 days?",
       "description": "Short-window revenue \u2014 answer must contain ~\u20b911,491",
-      "valid": true,
-      "cited_count": 1,
-      "issues": [],
-      "latency_s": 1.77,
-      "tool_calls": 1,
-      "accuracy_checks": [
-        true
-      ]
-    },
-    {
-      "question": "How much did we spend on Meta Ads in the last 30 days?",
-      "description": "Ad spend query \u2014 must cite raw_meta_insights, ~\u20b9172,211",
       "valid": true,
       "cited_count": 1,
       "issues": [],
@@ -47,12 +35,24 @@
       ]
     },
     {
-      "question": "How much did we spend on Meta Ads in the last 14 days?",
-      "description": "14d ad spend \u2014 partial window",
+      "question": "How much did we spend on Meta Ads in the last 30 days?",
+      "description": "Ad spend query \u2014 must cite raw_meta_insights, \u20b931,465.35",
       "valid": true,
       "cited_count": 1,
       "issues": [],
-      "latency_s": 2.08,
+      "latency_s": 2.62,
+      "tool_calls": 1,
+      "accuracy_checks": [
+        true
+      ]
+    },
+    {
+      "question": "How much did we spend on Meta Ads in the last 14 days?",
+      "description": "14d ad spend \u2014 partial window, \u20b914,526.97",
+      "valid": true,
+      "cited_count": 1,
+      "issues": [],
+      "latency_s": 2.3,
       "tool_calls": 1,
       "accuracy_checks": [
         true,
@@ -65,7 +65,7 @@
       "valid": true,
       "cited_count": 1,
       "issues": [],
-      "latency_s": 1.58,
+      "latency_s": 2.55,
       "tool_calls": 1,
       "accuracy_checks": [
         true
@@ -77,7 +77,7 @@
       "valid": true,
       "cited_count": 4,
       "issues": [],
-      "latency_s": 2.04,
+      "latency_s": 10.64,
       "tool_calls": 1,
       "accuracy_checks": [
         true,
@@ -90,24 +90,24 @@
       "valid": true,
       "cited_count": 1,
       "issues": [],
-      "latency_s": 2.26,
+      "latency_s": 1.47,
       "tool_calls": 1,
       "accuracy_checks": [
-        true,
-        true
+        false,
+        false
       ]
     },
     {
       "question": "What is my contribution margin per order this week?",
       "description": "CM per order 7d \u2014 must cite Shopify+Shiprocket join, 5 orders",
       "valid": true,
-      "cited_count": 10,
+      "cited_count": 2,
       "issues": [],
-      "latency_s": 4.29,
+      "latency_s": 1.57,
       "tool_calls": 1,
       "accuracy_checks": [
         true,
-        true
+        false
       ]
     },
     {
@@ -116,7 +116,7 @@
       "valid": true,
       "cited_count": 2,
       "issues": [],
-      "latency_s": 2.93,
+      "latency_s": 2.72,
       "tool_calls": 1,
       "accuracy_checks": [
         true
@@ -128,7 +128,7 @@
       "valid": true,
       "cited_count": 4,
       "issues": [],
-      "latency_s": 2.97,
+      "latency_s": 2.68,
       "tool_calls": 1,
       "accuracy_checks": [
         true
@@ -140,7 +140,7 @@
       "valid": true,
       "cited_count": 1,
       "issues": [],
-      "latency_s": 1.52,
+      "latency_s": 2.72,
       "tool_calls": 1,
       "accuracy_checks": [
         true,
@@ -153,7 +153,7 @@
       "valid": true,
       "cited_count": 2,
       "issues": [],
-      "latency_s": 2.25,
+      "latency_s": 2.01,
       "tool_calls": 2,
       "accuracy_checks": [
         true,
@@ -166,21 +166,23 @@
       "valid": true,
       "cited_count": 3,
       "issues": [],
-      "latency_s": 3.49,
+      "latency_s": 1.86,
       "tool_calls": 1,
       "accuracy_checks": [
         true,
-        true
+        false
       ]
     },
     {
       "question": "What is our average order value in the last 30 days?",
       "description": "AOV \u2014 revenue \u00f7 order count",
-      "valid": true,
+      "valid": false,
       "cited_count": 2,
-      "issues": [],
-      "latency_s": 4.03,
-      "tool_calls": 1,
+      "issues": [
+        "Uncited numbers found (significant values \u2265 100 without <cite> tags): ['37', '053', '38', '974.03']"
+      ],
+      "latency_s": 15.94,
+      "tool_calls": 2,
       "accuracy_checks": [
         true,
         true
@@ -189,11 +191,13 @@
     {
       "question": "Show me the top 5 orders by revenue in the last 30 days.",
       "description": "SQL tool fallback \u2014 metric catalog isn't enough for ORDER BY",
-      "valid": true,
+      "valid": false,
       "cited_count": 1,
-      "issues": [],
-      "latency_s": 3.44,
-      "tool_calls": 2,
+      "issues": [
+        "Uncited numbers found (significant values \u2265 100 without <cite> tags): ['5031', '5067', '5063', '5038', '5078']"
+      ],
+      "latency_s": 13.41,
+      "tool_calls": 6,
       "accuracy_checks": [
         true
       ]
@@ -202,10 +206,50 @@
       "question": "How many orders do we have in total?",
       "description": "Entity count \u2014 demo has 80 orders, used for isolation check",
       "valid": true,
+      "cited_count": 1,
+      "issues": [],
+      "latency_s": 2.97,
+      "tool_calls": 2,
+      "accuracy_checks": [
+        true
+      ]
+    },
+    {
+      "question": "What was the average delivery time in days from order to del",
+      "description": "ADVERSARIAL: no delivery timestamps in schema \u2014 must say no data, not hallucinate",
+      "valid": true,
       "cited_count": 0,
       "issues": [],
-      "latency_s": 1.53,
-      "tool_calls": 1,
+      "latency_s": 6.52,
+      "tool_calls": 3,
+      "accuracy_checks": [
+        true
+      ]
+    },
+    {
+      "question": "What was our revenue per Meta Ad click in the last 30 days?",
+      "description": "ADVERSARIAL: computed ratio (revenue \u00f7 clicks) \u2014 no native provenance anchor; tests cite-or-refuse behavior",
+      "valid": false,
+      "cited_count": 2,
+      "issues": [
+        "Uncited numbers found (significant values \u2265 100 without <cite> tags): ['0.21']"
+      ],
+      "latency_s": 34.59,
+      "tool_calls": 2,
+      "accuracy_checks": [
+        true
+      ]
+    },
+    {
+      "question": "How did our conversion rate from ad impressions to orders ch",
+      "description": "ADVERSARIAL: multi-step derived metric with two time windows \u2014 tests chained computation citation",
+      "valid": false,
+      "cited_count": 4,
+      "issues": [
+        "Uncited numbers found (significant values \u2265 100 without <cite> tags): ['27', '0.0007', '0.0003', '0.0007', '27']"
+      ],
+      "latency_s": 8.63,
+      "tool_calls": 2,
       "accuracy_checks": [
         true
       ]

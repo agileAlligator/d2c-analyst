@@ -20,6 +20,7 @@ from app.warehouse.models import (
     RawMetaCampaign,
     RawMetaInsight,
     RawShiprocketShipment,
+    RawShopifyCustomer,
     RawShopifyOrder,
     RawShopifyProduct,
     RawShopifyRefund,
@@ -32,6 +33,7 @@ RAW_MODEL_MAP: dict[tuple[str, str], tuple[type, str]] = {
     ("shopify", "order"):      (RawShopifyOrder,       "uq_raw_shopify_orders"),
     ("shopify", "product"):    (RawShopifyProduct,     "uq_raw_shopify_products"),
     ("shopify", "refund"):     (RawShopifyRefund,       "uq_raw_shopify_refunds"),
+    ("shopify", "customer"):   (RawShopifyCustomer,    "uq_raw_shopify_customers"),
     ("meta_ads", "insight"):   (RawMetaInsight,         "uq_raw_meta_insights"),
     ("meta_ads", "campaign"):  (RawMetaCampaign,        "uq_raw_meta_campaigns"),
     ("shiprocket", "shipment"): (RawShiprocketShipment, "uq_raw_shiprocket_shipments"),
@@ -74,7 +76,11 @@ def run_connector(merchant_id: str, connector_name: str, db: Session) -> int:
                 run_id=run_id,
             ).on_conflict_do_update(
                 constraint=constraint_name,
-                set_={"payload": record.payload, "fetched_at": datetime.now(UTC)},
+                # Preserve the original payload for provenance round-trip integrity.
+                # APIs sometimes return partial representations on re-fetch (Shopify
+                # lightweight events vs full order fetch); overwriting could corrupt the
+                # source record that citations resolve to. Only update run metadata.
+                set_={"fetched_at": datetime.now(UTC), "run_id": run_id},
             )
             db.execute(stmt)
             count += 1

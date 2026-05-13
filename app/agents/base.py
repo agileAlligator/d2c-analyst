@@ -65,6 +65,20 @@ class BaseAgent:
         self.db.commit()
         return agent_run
 
+    def emit_proposal(self, proposal: "Proposal") -> None:
+        """Record a proposal. Raises if would_do_api_call is missing NOT_SENT=True.
+
+        Every code path that adds to self._proposals MUST go through here so that
+        the NOT_SENT guard is never bypassed.
+        """
+        api_call = proposal.would_do_api_call
+        if not isinstance(api_call, dict) or api_call.get("NOT_SENT") is not True:
+            raise RuntimeError(
+                f"Proposal '{proposal.action_type}' has no NOT_SENT=True "
+                "in would_do_api_call — refusing to record to prevent accidental execution."
+            )
+        self._proposals.append(proposal)
+
     def _execute(self):
         raise NotImplementedError
 

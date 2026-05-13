@@ -56,6 +56,17 @@ class RawShopifyRefund(Base):
     __table_args__ = (UniqueConstraint("merchant_id", "source_record_id", name="uq_raw_shopify_refunds"),)
 
 
+class RawShopifyCustomer(Base):
+    __tablename__ = "raw_shopify_customers"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    merchant_id = Column(String, nullable=False, index=True)
+    source_record_id = Column(String, nullable=False)
+    payload = Column(JSONB, nullable=False)
+    fetched_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    run_id = Column(String, nullable=False)
+    __table_args__ = (UniqueConstraint("merchant_id", "source_record_id", name="uq_raw_shopify_customers"),)
+
+
 class RawMetaInsight(Base):
     __tablename__ = "raw_meta_insights"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -164,6 +175,10 @@ class Provenance(Base):
     transform_id = Column(String, nullable=False)  # name of the normalizer function
     ingested_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     __table_args__ = (
+        UniqueConstraint(
+            "merchant_id", "row_table", "row_pk", "raw_table", "raw_record_id", "transform_id",
+            name="uq_provenance_dedup",
+        ),
         Index("ix_provenance_row", "row_table", "row_pk"),
         Index("ix_provenance_raw", "raw_table", "raw_record_id"),
     )

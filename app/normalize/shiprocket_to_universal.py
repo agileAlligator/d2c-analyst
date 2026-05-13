@@ -73,6 +73,12 @@ def _upsert_shipment(db: Session, merchant_id: str, raw: RawShiprocketShipment):
                         "raw_shiprocket_shipments", raw.source_record_id, TRANSFORM_ID)
 
 
+_RTO_STATUSES = {
+    "rto", "rto initiated", "rto delivered", "rto in transit",
+    "returned", "returned to origin", "return to origin", "rto out for delivery",
+    "rto shipment", "return initiated",
+}
+
+
 def _is_rto(status: str) -> bool:
-    rto_keywords = {"rto", "return", "returned", "rto initiated", "rto delivered"}
-    return any(k in status.lower() for k in rto_keywords)
+    return status.strip().lower() in _RTO_STATUSES

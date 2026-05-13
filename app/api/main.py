@@ -1,12 +1,14 @@
 """FastAPI application — chat, run viewer, health."""
 import logging
+from typing import Optional
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.chat.loop import run_chat
+from app.config import settings
 from app.warehouse.db import get_db
 from app.warehouse.models import AgentRun
 
@@ -15,15 +17,32 @@ app = FastAPI(title="D2C Analyst", version="0.1.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=getattr(settings, 'allowed_origins', ["http://localhost:10002"]),
+    allow_credentials=True,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Authorization", "Content-Type", "X-API-Key"],
 )
+
+
+def get_merchant_id(x_api_key: str = Header(default=None)) -> str:
+    key_map = getattr(settings, 'api_key_map', {})
+    if not key_map:
+        # Require explicit opt-in for keyless dev mode via DEV_MODE=true in env
+        if not getattr(settings, 'dev_mode', False):
+            raise HTTPException(
+                status_code=500,
+                detail="Server misconfiguration: API_KEYS_RAW not set. Set DEV_MODE=true to allow keyless dev access.",
+            )
+        logger.warning("DEV_MODE active — no API keys configured, defaulting to merchant 'demo'")
+        return "demo"
+    if not x_api_key or x_api_key not in key_map:
+        raise HTTPException(status_code=401, detail="Invalid or missing X-API-Key header")
+    return key_map[x_api_key]
 
 
 class ChatRequest(BaseModel):
     question: str
-    merchant_id: str = "demo"
+    merchant_id: Optional[str] = None
     history: list[dict] | None = None
 
 
@@ -49,16 +68,23 @@ def health():
 
 
 @app.post("/chat", response_model=ChatResponse)
-def chat(req: ChatRequest, db: Session = Depends(get_db)):
-    result = run_chat(req.question, db, req.merchant_id, req.history)
+def chat(
+    req: ChatRequest,
+    db: Session = Depends(get_db),
+    merchant_id: str = Depends(get_merchant_id),
+):
+    result = run_chat(req.question, db, merchant_id, req.history)
     return ChatResponse(**result)
 
 
 @app.get("/runs")
-def list_runs(merchant_id: str = "demo", db: Session = Depends(get_db)):
+def list_runs(
+    db: Session = Depends(get_db),
+    merchant_id: str = Depends(get_merchant_id),
+):
     runs = (
         db.query(AgentRun)
-        .filter_by(merchant_id=merchant_id)
+        .filter(AgentRun.merchant_id == merchant_id)
         .order_by(AgentRun.started_at.desc())
         .limit(20)
         .all()
@@ -77,8 +103,15 @@ def list_runs(merchant_id: str = "demo", db: Session = Depends(get_db)):
 
 
 @app.get("/runs/{run_id}")
-def get_run(run_id: str, db: Session = Depends(get_db)):
-    run = db.query(AgentRun).filter(AgentRun.id == run_id).first()
+def get_run(
+    run_id: str,
+    db: Session = Depends(get_db),
+    merchant_id: str = Depends(get_merchant_id),
+):
+    run = db.query(AgentRun).filter(
+        AgentRun.id == run_id,
+        AgentRun.merchant_id == merchant_id,
+    ).first()
     if not run:
         raise HTTPException(404, "Run not found")
     return {

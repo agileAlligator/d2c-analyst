@@ -115,8 +115,12 @@ def validate_and_clean(
         return "*(uncited)*"
 
     cleaned = bare_number_re.sub(_replace_bare, cleaned)
-    # Now safe to remove residual malformed <cite> tags — numbers inside them were
-    # already processed by the scan above (they weren't in excluded_spans).
+    # Strip all <cite> markup from the final output. Design intent: the answer text
+    # is returned as clean prose; citation validity is communicated via the
+    # `all_citations_valid` flag and `provenance_ids` list in the API response —
+    # not as inline markup. Numbers inside valid cite tags were protected above
+    # (in excluded_spans) so they survive as bare text. Numbers inside malformed
+    # cite tags were already replaced with *(uncited)* by the scan above.
     cleaned = _BARE_CITE_TAG_RE.sub("", cleaned)
 
     if stripped:

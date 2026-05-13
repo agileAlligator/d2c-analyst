@@ -32,8 +32,10 @@ def _get_system_prompt() -> str:
     global _system_prompt_cache
     if _system_prompt_cache is None:
         from app.warehouse.db import get_schema_description
-        _system_prompt_cache = _SYSTEM_PROMPT_TEMPLATE.format(
-            warehouse_schema=get_schema_description()
+        # Use replace, not .format(), so literal { } in the template (e.g. JSON examples)
+        # don't cause KeyError/IndexError.
+        _system_prompt_cache = _SYSTEM_PROMPT_TEMPLATE.replace(
+            "{warehouse_schema}", get_schema_description()
         )
     return _system_prompt_cache
 
@@ -118,8 +120,13 @@ def _run_openai(question, db, merchant_id, history, decision: RoutingDecision):
 
     result = _openai_attempt(question, db, merchant_id, history, decision.model, oai_tools, client)
 
-    # Cascade: if the cheap model failed citation and we haven't escalated yet
-    if not result["all_citations_valid"] and not decision.escalated and decision.tier == "cheap":
+    # Cascade only on citation failures, not infrastructure failures (max_turns, empty_response,
+    # tool_parse_error, finish:length). Infrastructure failures won't be fixed by a smarter model.
+    _INFRA_PREFIXES = ("max_turns", "empty_response", "tool_parse_error", "finish:", "max_retries")
+    infra_failure = any(
+        i.startswith(_INFRA_PREFIXES) for i in (result["issues"] or [])
+    )
+    if not result["all_citations_valid"] and not infra_failure and not decision.escalated and decision.tier == "cheap":
         failure_summary = "; ".join(result["issues"][:2])
         decision = _router.escalate(decision, failure_summary)
         logger.info("Cascade: retrying with %s", decision.model)
@@ -150,6 +157,7 @@ def _openai_attempt(question, db, merchant_id, history, model, oai_tools, client
                 tools=oai_tools,
                 tool_choice="auto",
                 messages=messages,
+                timeout=30.0,
             )
             msg = response.choices[0].message
             finish = response.choices[0].finish_reason
@@ -176,6 +184,8 @@ def _openai_attempt(question, db, merchant_id, history, model, oai_tools, client
 
             elif finish == "stop":
                 raw_answer = msg.content or ""
+                if not raw_answer.strip():
+                    return _timeout_result(tool_trace, all_provenance_ids, reason="empty_response")
                 cleaned, valid, issues = validate_and_clean(
                     raw_answer, all_provenance_ids, db,
                     merchant_id=merchant_id, tool_value_set=tool_value_set,

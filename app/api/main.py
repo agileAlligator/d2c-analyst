@@ -1,6 +1,5 @@
 """FastAPI application — chat, run viewer, health."""
 import logging
-from typing import Optional
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -42,7 +41,6 @@ def get_merchant_id(x_api_key: str = Header(default=None)) -> str:
 
 class ChatRequest(BaseModel):
     question: str
-    merchant_id: Optional[str] = None
     history: list[dict] | None = None
 
 
@@ -73,7 +71,13 @@ def chat(
     db: Session = Depends(get_db),
     merchant_id: str = Depends(get_merchant_id),
 ):
-    result = run_chat(req.question, db, merchant_id, req.history)
+    try:
+        result = run_chat(req.question, db, merchant_id, req.history)
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        logger.exception("Unhandled error in /chat for merchant %s", merchant_id)
+        raise HTTPException(status_code=500, detail="Internal error — check server logs")
     return ChatResponse(**result)
 
 

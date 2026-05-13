@@ -33,14 +33,14 @@ TOOL_DEFINITIONS = [
         "name": "query_metric",
         "description": (
             "Query a pre-defined business metric. Returns rows with provenance IDs. "
-            "Use this for revenue, ad_spend, rto_rate, contribution_margin, cac."
+            "Use this for revenue, ad_spend, rto_rate, contribution_margin, cac, average_order_value."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "metric_name": {
                     "type": "string",
-                    "enum": ["revenue", "ad_spend", "rto_rate", "contribution_margin", "cac"],
+                    "enum": ["revenue", "ad_spend", "rto_rate", "contribution_margin", "cac", "average_order_value"],
                 },
                 "group_by": {
                     "type": "string",

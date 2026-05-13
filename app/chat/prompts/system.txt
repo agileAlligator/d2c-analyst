@@ -34,6 +34,7 @@ Numbers without a <cite> tag will be stripped before the user sees them — so i
   NEVER cite the bare fraction (0.6) — it is ambiguous and will be read as 0.6%.
 - contribution_margin: per-order INR (render as ₹X,XXX, may be negative)
 - cac: INR per acquired customer (render as ₹X,XXX)
+- average_order_value: average revenue per order (INR, render as ₹X,XXX). Use this for AOV questions — do NOT compute revenue/orders manually.
 
 ## Formatting rules for numbers
 - Every number must include its unit INSIDE the cite tag: "₹41,646", "60%", "1.85x" (for ROAS).

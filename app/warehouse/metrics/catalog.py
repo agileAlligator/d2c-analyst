@@ -166,6 +166,33 @@ METRIC_SQL: dict[str, str] = {
         LIMIT 100
     """,
 
+    "average_order_value": """
+        WITH agg AS (
+            SELECT
+                {group_by_select}
+                SUM(ev.amount) / NULLIF(COUNT(DISTINCT ev.entity_id), 0) AS average_order_value,
+                COUNT(DISTINCT ev.entity_id) AS order_count,
+                SUM(ev.amount) AS total_revenue,
+                ARRAY_AGG(DISTINCT ev.event_id::text) AS event_ids
+            FROM events ev
+            JOIN entities en ON ev.entity_id = en.entity_id
+            WHERE ev.event_type IN ('order_revenue', 'refund')
+              AND ev.merchant_id = :merchant_id
+              {time_filter}
+              {extra_filters}
+            {group_by_clause}
+        )
+        SELECT
+            agg.*,
+            (
+                SELECT ARRAY_AGG(DISTINCT raw_record_id)
+                FROM provenance
+                WHERE row_table = 'events'
+                  AND row_pk = ANY(agg.event_ids)
+            ) AS provenance_ids
+        FROM agg
+    """,
+
     "cac": """
         WITH spend AS (
             SELECT SUM(ev.amount) AS total_spend,
@@ -228,6 +255,7 @@ METRIC_VALUE_COL = {
     "rto_rate": "rto_rate",
     "contribution_margin": "contribution_margin",
     "cac": "cac",
+    "average_order_value": "average_order_value",
 }
 
 

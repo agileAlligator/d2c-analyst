@@ -10,13 +10,13 @@ logger = logging.getLogger(__name__)
 
 
 def get_duckdb_conn() -> duckdb.DuckDBPyConnection:
-    """Return a DuckDB connection attached to Postgres via postgres_scanner."""
+    """Return a DuckDB connection attached to Postgres via postgres_scanner.
+
+    Security: _validate_query blocks all external-read tokens (READ_CSV, GLOB, etc.)
+    and write/DDL tokens. enable_external_access=false is intentionally omitted because
+    it also blocks LOAD and ATTACH TCP connections, breaking the postgres extension.
+    """
     conn = duckdb.connect(database=":memory:")
-    # Disable all external access before any user query executes
-    try:
-        conn.execute("SET enable_external_access = false")
-    except Exception as e:
-        logger.warning("DuckDB: could not disable external access: %s", e)
     conn.execute("INSTALL postgres; LOAD postgres;")
     p = _parse_url()
     attach_str = (

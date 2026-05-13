@@ -1,7 +1,7 @@
 """Eval suite — citation coverage and accuracy against the seeded demo merchant.
 
 Requires a live Postgres with seed data: make seed
-Skipped when neither OPENAI_API_KEY nor OPENAI_API_KEY is set (or both are 'dummy').
+Skipped when OPENAI_API_KEY is not set (or is 'dummy').
 
 Run with: pytest tests/eval/ -v -s
 """
@@ -18,13 +18,9 @@ try:
 except ImportError:
     pass
 
-_LLM_KEY_CHECK = os.getenv("OPENAI_API_KEY", "dummy")
 _OPENAI = os.getenv("OPENAI_API_KEY", "dummy")
-SKIP_REASON = "No live LLM API key — set OPENAI_API_KEY or OPENAI_API_KEY to run eval"
-SKIP = (
-    (_LLM_KEY_CHECK == "dummy" or not _LLM_KEY_CHECK) and
-    (_OPENAI == "dummy" or not _OPENAI)
-)
+SKIP_REASON = "No live LLM API key — set OPENAI_API_KEY to run eval"
+SKIP = _OPENAI == "dummy" or not _OPENAI
 
 RESULTS_FILE = Path(__file__).parent / "eval_results.json"
 

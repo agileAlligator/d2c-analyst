@@ -1,8 +1,9 @@
-"""Integration tests for the chat loop — mocks only the  API call.
+"""Integration tests for the chat loop — mocks only the OpenAI API call.
 
 All tool dispatch, metric queries, provenance lookups, and citation validation
 run against real logic (not mocked). Only the LLM response is pre-recorded.
 """
+import json as _json
 import os
 from unittest.mock import MagicMock, patch
 
@@ -13,27 +14,23 @@ DB_URL = os.getenv("DATABASE_URL", "")
 pytestmark = pytest.mark.skipif(not DB_URL, reason="DATABASE_URL not set")
 
 
-def _make_tool_use_message(tool_name: str, tool_id: str, inputs: dict):
-    """Build an -style tool_use content block."""
-    block = MagicMock()
-    block.type = "tool_use"
-    block.name = tool_name
-    block.id = tool_id
-    block.input = inputs
-    return block
+def _make_tool_call(tool_name: str, tool_id: str, inputs: dict):
+    """Build an OpenAI-style tool_call object."""
+    tc = MagicMock()
+    tc.id = tool_id
+    tc.function.name = tool_name
+    tc.function.arguments = _json.dumps(inputs)
+    return tc
 
 
-def _make_text_message(text: str):
-    block = MagicMock()
-    block.type = "text"
-    block.text = text
-    return block
-
-
-def _make_response(content_blocks, stop_reason="end_turn"):
+def _make_response(content=None, tool_calls=None, finish_reason="stop"):
+    """Build an OpenAI-style chat completion response."""
+    choice = MagicMock()
+    choice.finish_reason = finish_reason
+    choice.message.content = content
+    choice.message.tool_calls = tool_calls if tool_calls is not None else []
     resp = MagicMock()
-    resp.content = content_blocks
-    resp.stop_reason = stop_reason
+    resp.choices = [choice]
     return resp
 
 
@@ -42,8 +39,6 @@ class TestChatLoopIntegration:
 
     def test_revenue_question_with_cited_answer(self):
         """LLM calls query_metric, gets provenance IDs, returns a cited answer."""
-        import json as _json
-
         from app.chat.loop import run_chat
         from app.warehouse.db import SessionLocal
 
@@ -56,50 +51,42 @@ class TestChatLoopIntegration:
             messages = kwargs.get("messages", [])
 
             if call_count[0] == 1:
-                # First call: return tool_use
                 return _make_response(
-                    [_make_tool_use_message("query_metric", "tu_001", {
+                    tool_calls=[_make_tool_call("query_metric", "tu_001", {
                         "metric_name": "revenue",
                         "time_range": "30d",
                     })],
-                    stop_reason="tool_use",
+                    finish_reason="tool_calls",
                 )
 
-            # Second call: extract real provenance ID and revenue from the tool result
+            # Extract real provenance ID and revenue from the tool result message
             if captured_prov_id[0] is None:
                 for msg in reversed(messages):
-                    if msg.get("role") == "user":
-                        for block in (msg.get("content") or []):
-                            if isinstance(block, dict) and block.get("type") == "tool_result":
-                                data = _json.loads(block.get("content", "{}"))
-                                pids = data.get("provenance_ids", [])
-                                rows = data.get("rows", [])
-                                if pids:
-                                    captured_prov_id[0] = pids[0]
-                                if rows and captured_revenue[0] is None:
-                                    rev = rows[0].get("revenue", "0")
-                                    # revenue comes back as string after json.dumps(default=str)
-                                    try:
-                                        captured_revenue[0] = str(int(float(str(rev))))
-                                    except (ValueError, TypeError):
-                                        captured_revenue[0] = str(rev)
-                                if captured_prov_id[0]:
-                                    break
+                    if isinstance(msg, dict) and msg.get("role") == "tool":
+                        data = _json.loads(msg.get("content", "{}"))
+                        pids = data.get("provenance_ids", [])
+                        rows = data.get("rows", [])
+                        if pids:
+                            captured_prov_id[0] = pids[0]
+                        if rows and captured_revenue[0] is None:
+                            rev = rows[0].get("revenue", "0")
+                            try:
+                                captured_revenue[0] = str(int(float(str(rev))))
+                            except (ValueError, TypeError):
+                                captured_revenue[0] = str(rev)
                         if captured_prov_id[0]:
                             break
 
             ref = captured_prov_id[0] or "order:5000"
             rev_str = captured_revenue[0] or "37053"
-            return _make_response([
-                _make_text_message(
-                    f'Total revenue in the last 30 days was '
-                    f'<cite ref="{ref}">₹{rev_str}</cite>.'
-                ),
-            ])
+            return _make_response(
+                content=f'Total revenue in the last 30 days was <cite ref="{ref}">₹{rev_str}</cite>.',
+                finish_reason="stop",
+            )
 
         with patch("app.chat.loop.get_client") as mock_get_client:
             mock_client = MagicMock()
-            mock_client.messages.create.side_effect = fake_create
+            mock_client.chat.completions.create.side_effect = fake_create
             mock_get_client.return_value = mock_client
 
             with SessionLocal() as db:
@@ -107,13 +94,10 @@ class TestChatLoopIntegration:
 
         assert result["all_citations_valid"] is True, f"Citation issues: {result['issues']}\nAnswer: {result['answer']}"
         assert len(result["tool_calls"]) >= 1
-        # Revenue should appear as whatever the DB returned (dynamic, not hard-coded)
         assert captured_revenue[0] is not None and captured_revenue[0] in result["answer"]
 
     def test_uncited_number_triggers_retry(self):
         """LLM returns uncited number → validator rejects → retry with correction → passes."""
-        import json as _json
-
         from app.chat.loop import run_chat
         from app.warehouse.db import SessionLocal
 
@@ -124,62 +108,51 @@ class TestChatLoopIntegration:
 
         def fake_create(**kwargs):
             call_count[0] += 1
-            # Capture a snapshot of messages on every call
             captured_messages.append(list(kwargs.get("messages", [])))
 
-            # First call: return tool_use
             if call_count[0] == 1:
                 return _make_response(
-                    [_make_tool_use_message("query_metric", "tu_001", {
+                    tool_calls=[_make_tool_call("query_metric", "tu_001", {
                         "metric_name": "revenue",
                         "time_range": "30d",
                     })],
-                    stop_reason="tool_use",
+                    finish_reason="tool_calls",
                 )
 
-            # On the second call, extract the real provenance ID and revenue from the tool_result
             if captured_prov_id[0] is None:
-                msgs = captured_messages[-1]
-                for msg in reversed(msgs):
-                    if msg.get("role") == "user":
-                        for block in (msg.get("content") or []):
-                            if isinstance(block, dict) and block.get("type") == "tool_result":
-                                data = _json.loads(block.get("content", "{}"))
-                                pids = data.get("provenance_ids", [])
-                                rows = data.get("rows", [])
-                                if pids:
-                                    captured_prov_id[0] = pids[0]
-                                if rows and captured_revenue[0] is None:
-                                    rev = rows[0].get("revenue", "0")
-                                    try:
-                                        captured_revenue[0] = str(int(float(str(rev))))
-                                    except (ValueError, TypeError):
-                                        captured_revenue[0] = str(rev)
-                                if captured_prov_id[0]:
-                                    break
-                    if captured_prov_id[0]:
-                        break
+                for msg in reversed(captured_messages[-1]):
+                    if isinstance(msg, dict) and msg.get("role") == "tool":
+                        data = _json.loads(msg.get("content", "{}"))
+                        pids = data.get("provenance_ids", [])
+                        rows = data.get("rows", [])
+                        if pids:
+                            captured_prov_id[0] = pids[0]
+                        if rows and captured_revenue[0] is None:
+                            rev = rows[0].get("revenue", "0")
+                            try:
+                                captured_revenue[0] = str(int(float(str(rev))))
+                            except (ValueError, TypeError):
+                                captured_revenue[0] = str(rev)
+                        if captured_prov_id[0]:
+                            break
 
-            # Second call: uncited number (should fail validation) — use real revenue so
-            # the bare-number heuristic fires but the value is actually in tool_value_set
             bare_rev = captured_revenue[0] or "99999"
             if call_count[0] == 2:
-                return _make_response([
-                    _make_text_message(f"Total revenue was {bare_rev} last month."),
-                ])
+                return _make_response(
+                    content=f"Total revenue was {bare_rev} last month.",
+                    finish_reason="stop",
+                )
 
-            # Third call: cited answer using real provenance ID and real revenue value
             ref = captured_prov_id[0] or "fallback-prov-id"
             rev_str = captured_revenue[0] or "99999"
-            return _make_response([
-                _make_text_message(
-                    f'Total revenue was <cite ref="{ref}">₹{rev_str}</cite> last month.'
-                ),
-            ])
+            return _make_response(
+                content=f'Total revenue was <cite ref="{ref}">₹{rev_str}</cite> last month.',
+                finish_reason="stop",
+            )
 
         with patch("app.chat.loop.get_client") as mock_get_client:
             mock_client = MagicMock()
-            mock_client.messages.create.side_effect = fake_create
+            mock_client.chat.completions.create.side_effect = fake_create
             mock_get_client.return_value = mock_client
 
             with SessionLocal() as db:
@@ -187,8 +160,7 @@ class TestChatLoopIntegration:
 
         assert call_count[0] >= 3, "Expected at least 3 LLM calls (tool use + bad answer + retry)"
 
-        # The retry call's last user message should reference citation issues
-        retry_user_msg = captured_messages[2][-1]  # last msg on 3rd call
+        retry_user_msg = captured_messages[2][-1]
         retry_content = str(retry_user_msg.get("content", ""))
         assert "citation" in retry_content.lower() or "cite" in retry_content.lower(), (
             f"Retry prompt did not mention citations: {retry_content!r}"
@@ -197,7 +169,6 @@ class TestChatLoopIntegration:
         assert result["all_citations_valid"] is True, (
             f"Expected retry to succeed. Issues: {result['issues']}\nAnswer: {result['answer']}"
         )
-        # The bare number from the bad answer should not appear uncited in the final answer
         bare_rev_final = (captured_revenue[0] or "99999").replace(",", "")
         assert bare_rev_final not in result["answer"].replace(",", "") or "<cite" in result["answer"], (
             "Bad answer's bare number leaked into final answer uncited"
@@ -231,12 +202,18 @@ class TestChatLoopIntegration:
 
         def fake_create(**kwargs):
             call_count[0] += 1
-            # Always return tool_use with no tool_use blocks — loop spins without making progress
-            return _make_response([], stop_reason="tool_use")
+            # Always return a tool call — loop spins until MAX_TURNS
+            return _make_response(
+                tool_calls=[_make_tool_call("list_entities", f"tu_{call_count[0]:03d}", {
+                    "entity_type": "order",
+                    "limit": 1,
+                })],
+                finish_reason="tool_calls",
+            )
 
         with patch("app.chat.loop.get_client") as mock_get_client:
             mock_client = MagicMock()
-            mock_client.messages.create.side_effect = fake_create
+            mock_client.chat.completions.create.side_effect = fake_create
             mock_get_client.return_value = mock_client
 
             with SessionLocal() as db:

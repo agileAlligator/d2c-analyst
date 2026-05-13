@@ -135,7 +135,7 @@ Validator:  order:5023 → resolves in provenance table ✓ → passes
 
 The system prompt says explicitly: *"Numbers without a `<cite>` tag will be stripped before the user sees them — so if you want a number to appear, you must cite it."* The validator enforces what the prompt promises.
 
-**Model router** — applies to the OpenAI backend only. When `OPENAI_API_KEY` is present, all queries go to `gpt-4o` and the cascade is not needed (Claude 4.6 handles citation reliably without escalation). When only an OpenAI key is configured, a `HeuristicRouter` (`app/chat/routing/`) classifies every incoming query before the first API call and routes it to `gpt-4o-mini` (cheap, fast) or `gpt-4o` (smart). If the cheap model fails citation validation, a **FrugalGPT-style cascade** retries from scratch with `gpt-4o`.
+**Model router** — queries don't all go to the same model. A `HeuristicRouter` (`app/chat/routing/`) classifies every incoming query before the first API call and routes it to `gpt-4o-mini` (cheap, fast) or `gpt-4o` (smart). If the cheap model fails citation validation, a **FrugalGPT-style cascade** retries from scratch with `gpt-4o`.
 
 Eight signals trigger escalation to `gpt-4o`:
 
@@ -298,7 +298,7 @@ Working as designed. The correct v1 fix: a `compute()` tool that returns a `comp
 ## Running it
 
 ```bash
-cp .env.example .env   # add OPENAI_API_KEY (preferred) or OPENAI_API_KEY; connector keys optional
+cp .env.example .env   # add OPENAI_API_KEY (required); connector keys optional
                        # DEV_MODE=true is pre-set in .env.example for keyless local access
 make bootstrap         # start db, install, seed demo+demo2, start api+ui
 # UI at http://localhost:10002 — chat is live
@@ -325,7 +325,7 @@ Ports: api `:10001`, ui `:10002`, db `:5434`
 | Meta Ads + Shiprocket | 5h | Shiprocket token auth from `.env`, no OAuth needed |
 | Universal schema + normalizers | 8h | Identity resolution, MD5 event IDs for idempotency |
 | Typed metrics + SQL sandbox | 4h | DuckDB attach, GROUP BY template bugs |
-| Chat tool-use loop + validator | 8h | Citation validator rewrite took most of this; validator now strips bare numbers (not just flags) and cross-checks cited values against tool results; DuckDB sandbox hardened (`enable_external_access=false`, extended token blocklist);  backend added (GPT-4o preferred, OpenAI fallback) |
+| Chat tool-use loop + validator | 8h | Citation validator rewrite took most of this; validator now strips bare numbers (not just flags) and cross-checks cited values against tool results; DuckDB sandbox hardened (`enable_external_access=false`, extended token blocklist) |
 | Margin Watch agent | 5h | Proposal contract, run log format |
 | Scale harness + RLS hardening | 5h | Opus review found 12 bugs; all fixed |
 | Eval suite + second merchant | 2h | Golden questions, scoreboard, RLS isolation test |
@@ -359,7 +359,7 @@ Honest per-file breakdown:
 | `app/normalize/` | Specified event types, MD5 idempotency contract, join logic | Generated normalizers; I caught wrong join field (shopify_order_id vs order_number) |
 | `app/warehouse/metrics/catalog.py` | Specified metrics and their semantics | Generated SQL templates; I fixed 3 bugs (GROUP BY 1=1, ARRAY_AGG NULLs, contribution margin join) |
 | `app/chat/validator.py` | Specified server-side enforcement contract | Generated regex parser; I caught a logic error (bare-number scan was skipped when no cite issues present) |
-| `app/chat/loop.py` | Specified tool schema, retry logic, routing contract, /OpenAI backend selection | Generated API calls and message threading; I added dual-backend dispatch and `for...else` MAX_TURNS guard |
+| `app/chat/loop.py` | Specified tool schema, retry logic, routing contract | Generated API calls and message threading; I added `for...else` MAX_TURNS guard |
 | `app/chat/routing/` | Designed signals and cascade contract; chose FrugalGPT over RouteLLM (OpenAI path only) | Generated HeuristicRouter and signal regexes; I reviewed all 8 signals |
 | `app/agents/margin_watch.py` | Specified 3 proposal types and NOT_SENT contract | Generated proposal logic; I verified ₹ impact calculations |
 | `scripts/seed_demo_merchant.py` | Specified ground-truth values (₹37,053 30d revenue, Shadowfax 47.8% RTO) | Generated fixture data |

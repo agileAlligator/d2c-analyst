@@ -3,8 +3,6 @@
 Routing: queries go to gpt-4o-mini by default. Eight heuristic signals escalate to
 gpt-4o before the first call. If the cheap model fails citation validation, a
 FrugalGPT-style cascade retries from scratch with gpt-4o.
-
-Supports both OpenAI (primary) and  (fallback) backends.
 """
 import json
 import logging
@@ -26,7 +24,6 @@ _SYSTEM_PROMPT_TEMPLATE = (Path(__file__).parent / "prompts" / "system.txt").rea
 _system_prompt_cache: str | None = None
 
 _client = None
-_backend: str | None = None  # "" or "openai"
 
 _router = HeuristicRouter()
 
@@ -67,24 +64,18 @@ def _collect_tool_numbers(obj, acc: set) -> None:
 
 
 def get_client():
-    global _client, _backend
+    global _client
     if _client is not None:
         return _client
 
-    if settings.OPENAI_API_KEY and settings.OPENAI_API_KEY != "dummy":
-        
-        _client = openai.OpenAI(api_key=settings.openai_api_key)
-
-    elif settings.openai_api_key and settings.openai_api_key != "dummy":
+    if settings.openai_api_key and settings.openai_api_key != "dummy":
         import openai
         _client = openai.OpenAI(api_key=settings.openai_api_key)
-        _backend = "openai"
     else:
         raise RuntimeError(
-            "No LLM API key found. Set OPENAI_API_KEY or OPENAI_API_KEY in .env"
+            "No LLM API key found. Set OPENAI_API_KEY in .env"
         )
 
-    logger.info("Using %s backend", _backend)
     return _client
 
 
@@ -100,16 +91,13 @@ def run_chat(
     get_client()
     turn = len(history) // 2 if history else 0  # approximate conversation depth
     decision = _router.route(question, history or [], turn)
-
-    if _backend == "openai":
-        return _run_openai(question, db, merchant_id, history, decision)
-    return _run_openai_compat(question, db, merchant_id, history)
+    return _run_openai(question, db, merchant_id, history, decision)
 
 
 # ── OpenAI backend ────────────────────────────────────────────────────────────
 
 def _openai_tools() -> list[dict]:
-    """Convert -style tool definitions to OpenAI function-calling format."""
+    """Convert tool definitions to OpenAI function-calling format."""
     out = []
     for t in TOOL_DEFINITIONS:
         schema = t.get("input_schema", {})
@@ -202,77 +190,6 @@ def _openai_attempt(question, db, merchant_id, history, model, oai_tools, client
                 return _timeout_result(tool_trace, all_provenance_ids, reason=f"finish:{finish or 'none'}")
         else:
             # Inner loop exhausted MAX_TURNS without producing an answer — don't re-attempt
-            return _timeout_result(tool_trace, all_provenance_ids, reason="max_turns_exceeded")
-
-    return _timeout_result(tool_trace, all_provenance_ids)
-
-
-# ──  backend ────────────────────────────────────────────────────────
-
-def _run_openai_compat(question, db, merchant_id, history):
-    """ path — no routing (always Sonnet). Kept for fallback compatibility."""
-    messages = list(history or []) + [{"role": "user", "content": question}]
-    all_provenance_ids: list[str] = []
-    tool_trace: list[dict] = []
-    tool_value_set: set[float] = set()
-    client = get_client()
-
-    for attempt in range(MAX_RETRIES + 1):
-        for _ in range(MAX_TURNS):
-            response = client.messages.create(
-                model="gpt-4o",
-                max_tokens=4096,
-                system=_get_system_prompt(),
-                tools=TOOL_DEFINITIONS,
-                messages=messages,
-            )
-
-            if response.stop_reason == "tool_use":
-                tool_results = []
-                for block in response.content:
-                    if block.type != "tool_use":
-                        continue
-                    result = dispatch_tool(block.name, block.input, db, merchant_id)
-                    tool_trace.append({"tool": block.name, "input": block.input, "result": result})
-                    if isinstance(result, dict):
-                        prov = result.get("provenance_ids") or result.get("all_provenance_ids") or []
-                        all_provenance_ids.extend(prov)
-                    _collect_tool_numbers(result, tool_value_set)
-                    tool_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": block.id,
-                        "content": json.dumps(result, default=str),
-                    })
-                messages = messages + [
-                    {"role": "assistant", "content": response.content},
-                    {"role": "user", "content": tool_results},
-                ]
-
-            elif response.stop_reason == "end_turn":
-                raw_answer = "".join(
-                    block.text for block in response.content if hasattr(block, "text")
-                )
-                cleaned, valid, issues = validate_and_clean(
-                    raw_answer, all_provenance_ids, db,
-                    merchant_id=merchant_id, tool_value_set=tool_value_set,
-                )
-                if valid or attempt >= MAX_RETRIES:
-                    r = _result(cleaned, valid, issues, tool_trace, all_provenance_ids)
-                    r["routing"] = {
-                        "model": "gpt-4o",
-                        "tier": "smart",
-                        "reason": "openai_routing",
-                        "escalated": False,
-                    }
-                    return r
-                messages = messages + [
-                    {"role": "assistant", "content": response.content},
-                    {"role": "user", "content": _retry_prompt(issues)},
-                ]
-                break  # to outer loop for citation retry
-            else:
-                return _timeout_result(tool_trace, all_provenance_ids, reason=f"stop_reason:{response.stop_reason}")
-        else:
             return _timeout_result(tool_trace, all_provenance_ids, reason="max_turns_exceeded")
 
     return _timeout_result(tool_trace, all_provenance_ids)

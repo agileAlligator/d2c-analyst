@@ -1,7 +1,7 @@
 # Project Status
 
 **Last updated:** 2026-05-16
-**Phase:** Complete — v0.1.3 (evaluation hardening)
+**Phase:** Complete — v0.1.4 (connector cleanup + stale-value purge)
 
 ## What's built
 

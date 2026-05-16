@@ -110,21 +110,7 @@ Why not fixed: wiring links into the SQL catalog means rewriting multi-join CTEs
 
 Impact: low for v0 (single merchant, clean data). At 10k merchants with fuzzy identity, queries without confidence filtering will silently over-count attributed revenue.
 
-## 9. Indian-format numbers in bare_number_re
-
-**Query type**: Model writes bare "₹1,01,472" outside a cite tag.
-
-**What happens**: The lakhs-format comma pattern `1,01,472` doesn't match the
-Western `\d{1,3}(?:,\d{3})+` branch of `bare_number_re`. The sub-sequences may
-partially survive or be stripped depending on their length.
-
-**Root cause**: Validator's comma-number regex assumes Western grouping.
-
-**Why not fixed**: Low impact — model writes numbers inside cite tags where the
-format is irrelevant. Observed failures in testing were all inside cite tags.
-Revisit if adversarial testing shows uncited Indian-format leakage in the wild.
-
-## 10. Cursor stalling for Meta campaigns + Shiprocket shipments
+## 9. Cursor stalling for Meta campaigns + Shiprocket shipments
 
 **What happens**: The runner extracts the cursor from `updated_at`, `date_stop`, or `created_at` on each record. These fields are absent from Meta campaign objects and Shiprocket shipment objects. As a result, no cursor advances and every run re-fetches all records for those resources.
 
@@ -132,7 +118,7 @@ Revisit if adversarial testing shows uncited Indian-format leakage in the wild.
 
 **Why not fixed**: Idempotent — upsert on `source_record_id` means re-fetching produces no corruption or duplicates. Acceptable at demo scale. Production fix: add a resource-specific cursor field map to runner config (e.g. `{"meta/campaigns": "updated_time", "shiprocket/shipments": "created_at"}`).
 
-## 11. Stale vendor API versions
+## 10. Stale vendor API versions
 
 **What happens**: Shopify `2024-01` and Meta `v20.0` are past their support windows. Field names or response shapes may have changed in current API versions.
 
@@ -140,7 +126,7 @@ Revisit if adversarial testing shows uncited Indian-format leakage in the wild.
 
 **Why not fixed**: Verifying and migrating to current versions requires live API access to test against production responses. This cannot be done safely in a demo environment without credentials scoped to the new versions.
 
-## 12. Indian lakh-format numbers (₹1,23,456) partially escape bare-number scan
+## 11. Indian lakh-format numbers (₹1,23,456) partially escape bare-number scan
 
 **What happens**: The bare-number regex requires comma groups of exactly 3 digits (`\d{1,3}(?:,\d{3})+`). Indian lakh format uses 2-digit groups after the first comma (e.g. `1,23,456`). Numbers in this format may not be detected as bare numbers and could survive the validator unstripped.
 
@@ -148,7 +134,7 @@ Revisit if adversarial testing shows uncited Indian-format leakage in the wild.
 
 **Why not fixed**: Affects only numbers ≥ ₹1,00,000 (one lakh). Demo D2C revenue in the seed data is well below that threshold so the gap has no observable impact in testing. Fix requires extending the regex to cover the Indian grouping pattern.
 
-## 13. LLM call budget is 36 (3 attempts × 12 turns), not 12
+## 12. LLM call budget is 36 (3 attempts × 12 turns), not 12
 
 **What happens**: The "12-turn max" cited in the README is the per-attempt limit. The agent makes up to 3 attempts before cascading, so the worst-case LLM call count is 36 turns per query, not 12. With a cascade fallback, the absolute ceiling is 72.
 

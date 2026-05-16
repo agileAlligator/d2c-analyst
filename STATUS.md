@@ -48,6 +48,8 @@
 - **Ingest payload preservation:** on re-ingest conflict, payload is preserved (not overwritten); only `fetched_at` and `run_id` are updated — protects provenance round-trip from partial API responses
 - **Per-row provenance:** `metrics/catalog.py` uses `.get()` not `.pop()` when flattening provenance IDs (v0.1.3 fix) so each result row retains its own per-row provenance list; the agent cites only the source rows that produced each specific order/proposal, not the global bundle
 - **RLS two-path architecture (v0.1.3):** SQLAlchemy path connects as `d2c_app` (`NOSUPERUSER NOBYPASSRLS`) with `NullPool` + `after_begin` listener replaying `app.current_merchant` GUC; DuckDB analytical path uses the superuser (`DATABASE_URL_ANALYTICS`) and enforces merchant isolation via per-query temp views with `WHERE merchant_id = '<merchant_id>'`. Tradeoff is documented in README §3.
+- **rto_rate time-window correctness (v0.1.5):** time filter changed from `en.first_seen` (normalize-run timestamp, always ~now) to `ev.occurred_at` (actual RTO date set during normalization), so 7d/14d/30d/90d windows return meaningfully different values on seed data instead of collapsing to "all RTOs are in every window."
+- **contribution_margin includes refunds (v0.1.5):** `_upsert_refund` now resolves `order_number` from the linked order entity and stores it in refund entity attributes; the CM CTE joins on `order_number`, so refunds no longer fall into a NULL group and disappear from per-order CM.
 
 ## Adversarial hardening (7 rounds)
 
@@ -74,6 +76,24 @@ Fixes applied through iterative adversarial testing (Opus adversary → Opus pla
 - **Compare tool semantics** — system prompt: `compare(7d, 14d)` is overlapping trailing windows, NOT WoW
 - **DuckDB SQL gotchas** — `list()`/`array_agg()` not `json_agg()`; qualify `attributes` with table alias
 - **`write_note` SQL** — `CAST(:note AS jsonb)` fixes SQLAlchemy parameter collision; rowcount check added
+
+## v0.1.5 full-codebase audit (5-agent parallel review)
+
+A second round of hardening run via the `/harden` slash command (`.claude/commands/harden.md`): 5 Opus audit agents in parallel across non-overlapping slices, triage, Sonnet fix agents, then 3 Opus reviewers. Fixes applied:
+
+- **`contribution_margin` dropping refunds** — `_upsert_refund` now resolves and stores `order_number` from the linked order entity (was NULL → refunds fell out of the CM CTE's order_number join).
+- **`rto_rate` time-window filter** — switched from `en.first_seen` to `ev.occurred_at` so 7d vs 90d queries return different values on seed data.
+- **`BaseAgent` exception path** — `db.rollback()` added before the second `db.commit()` so a failed `_execute` cannot half-commit partial state.
+- **Shopify `_paginate`** — `item['id']` → `item.get('id', 'unknown')` to prevent `KeyError` on malformed payloads (matches Meta's defensive style).
+- **Shiprocket `_pull_shipments`** — hardcoded `100` replaced with `params["per_page"]` in the stop condition; changing `per_page` no longer silently mis-paginates.
+- **Shiprocket `auth_status`** — dead `== 200` check removed (raise_for_status already raised on non-200); returns `True` directly.
+- **Meta connector** — `datetime.utcnow()` → `datetime.now(timezone.utc)` (deprecated in 3.12).
+- **`identity.py`** — dead OR branch removed (`e_order.attributes->>'id'` was never set anywhere in the normalizer).
+- **`.env.example`** — DATABASE_URL port 5432 → 5434 to match `docker-compose.yml`.
+- **Makefile `seed` target** — added `pip install -e . -q` so `make seed` works on a fresh clone without first running `make bootstrap`.
+- **README** — false-assertion claim about DEV_MODE corrected to the actual setup instruction.
+- **`docs/wont_fix.md`** — 4 new entries added (Meta/Shiprocket cursor stalling, stale vendor API versions, Indian lakh-format regex gap, true 36-turn LLM budget vs the simplified "12-turn max" in README), and the prior duplicate Indian-format entry was consolidated into the more precise lakh-format entry. Final numbering is 1–12, sequential.
+- **Tooling** — `/harden` slash command codified in `.claude/commands/harden.md`.
 
 ## Known limitations
 

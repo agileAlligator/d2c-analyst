@@ -33,6 +33,12 @@ class Settings(BaseSettings):
     # Set true in .env to allow keyless access (defaults to merchant "demo"); never in prod
     dev_mode: bool = False
 
+    # Margin Watch agent thresholds
+    rto_unit_cost_inr: float = 150.0
+    roas_alert_threshold: float = 2.0
+    adset_pause_cut_fraction: float = 0.30
+    min_shipments_for_courier_signal: int = 5
+
     @property
     def api_key_map(self) -> dict[str, str]:
         """Parse api_keys_raw into {api_key: merchant_id}."""

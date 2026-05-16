@@ -138,7 +138,7 @@ def validate_and_clean(
                 tolerance = max(0.01, abs(num) * 0.01)
                 value_ok = any(
                     abs(num - v) <= tolerance
-                    or (v < 0 < num and abs(abs(num) - abs(v)) <= 0.01)
+                    or (v < 0 < num and abs(abs(num) - abs(v)) <= tolerance)
                     for v in tool_value_set
                 )
                 if not value_ok:

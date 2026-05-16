@@ -88,7 +88,7 @@ provenance     — maps every events/entities row back to the raw_* rows that pr
 
 Why this shape:
 - **Entity + event split** makes any time-series question cheap (cohorts, decay curves, attribution windows).
-- **`links` with confidence** is honest about cross-source identity resolution. Shopify↔Shiprocket by `order_number = channel_order_id` (confidence 1.0). Meta↔Shopify by campaign ID appearing in a discount code string (confidence 0.6). We never silently join; the confidence travels with the row.
+- **`links` with confidence** is honest about cross-source identity resolution. Shopify↔Shiprocket by `order_number = channel_order_id` (confidence 1.0). Meta↔Shopify by campaign ID appearing in a discount code string (confidence 0.6). We never silently join; the confidence travels with the row (currently written to the `links` table for provenance; metric queries join directly via JSONB attribute equality — confidence filtering is a v0.2 task).
 - **`provenance` as a first-class table, not a column,** because a single normalized `order_revenue` event can derive from order + refund + shipping cost rows simultaneously. Citations must enumerate all of them. A single `provenance_id` column can't express this.
 - **JSONB attribute bags** keep the normalized layer flexible. Hot fields get promoted to columns; everything else waits.
 
@@ -240,21 +240,21 @@ Run `make seed && make eval` with `OPENAI_API_KEY` set in `.env`.
 
 | Question | ✅ | Citations | Latency | Tools |
 |---|---|---|---|---|
-| Total revenue last 30 days | ✅ | 1 | 4.3s | 1 |
-| Meta Ads spend last 14 days | ✅ | 1 | 1.9s | 1 |
-| RTO rate by courier | ✅ | 4 | 2.9s | 1 |
-| CAC last 30 days | ✅ | 1 | 2.0s | 1 |
-| Negative contribution margin orders | ✅ | 4 | 5.0s | 2 |
-| Revenue: 7d vs 30d comparison | ✅ | 3 | 2.3s | 1 |
-| Average order value | ✅ | 3 | 5.9s | 3 |
-| Highest RTO courier | ✅ | 1 | 1.6s | 1 |
-| Ad spend vs revenue + ROAS | ✅ | 2 | 2.6s | 2 |
-| Top 5 orders by revenue (SQL) | ✅ | 0 | 5.5s | 2 |
-| *Delivery time (adversarial)* | ✅* | 0 | 2.1s | 1 |
-| *Revenue per Meta click (adversarial)* | ⚠ | 2 | 3.4s | 2 |
-| *Impression→order conversion delta (adversarial)* | ⚠ | 1 | 4.2s | 3 |
+| Total revenue last 30 days | ✅ | 1 | — | 1 |
+| Meta Ads spend last 14 days | ✅ | 1 | — | 1 |
+| RTO rate by courier | ✅ | 4 | — | 1 |
+| CAC last 30 days | ✅ | 1 | — | 1 |
+| Negative contribution margin orders | ✅ | 4 | — | 2 |
+| Revenue: 7d vs 30d comparison | ✅ | 3 | — | 1 |
+| Average order value | ✅ | 3 | — | 3 |
+| Highest RTO courier | ✅ | 1 | — | 1 |
+| Ad spend vs revenue + ROAS | ✅ | 2 | — | 2 |
+| Top 5 orders by revenue (SQL) | ✅ | 0 | — | 2 |
+| *Delivery time (adversarial)* | ✅* | 0 | — | 1 |
+| *Revenue per Meta click (adversarial)* | ⚠ | 2 | — | 2 |
+| *Impression→order conversion delta (adversarial)* | ⚠ | 1 | — | 3 |
 
-**Citation enforcement: server-side, all 19 questions. Bare numbers replaced with `*(uncited)*` in output; unresolvable refs replaced with `*(unverified)*`. Accuracy: ~87% (core questions). P50: 2.3s. P95: 5.9s. Blended cost: ~$0.028/turn.**
+**Citation enforcement: server-side, all 19 questions. Bare numbers replaced with `*(uncited)*` in output; unresolvable refs replaced with `*(unverified)*`. Accuracy: ~63% on last known run (run `make eval` to regenerate); P50: 2.1s, P95: 28s. Blended cost: ~$0.028/turn.**
 
 **Adversarial hardening (post-v0):** 7-round adversarial loop (Opus adversary → Opus plan → Sonnet implementation → Opus code review). Final round scored 0 points — no citation failures, no verifiable wrong claims, no crashes against 12 targeted attacks. Fixed during the loop: ~20 bugs including date-string stripping, DuckDB JSONB syntax, NULL campaign group fabrication, compare-tool WoW confusion, RTO/refund conflation, write_note SQL, and missing metrics (roas, refunds, orders).
 
@@ -274,15 +274,15 @@ Run `make seed && make eval` with `OPENAI_API_KEY` set in `.env`.
 ```
 User:     "What was revenue per Meta Ad click last 30 days?"
 
-Model v1: "Revenue per click was ₹7,411 based on ₹37,053 revenue
+Model v1: "Revenue per click was ₹6,363 based on ₹31,814 revenue
            and 5 clicks tracked."
-Validator: bare number 7411 — no <cite> tag — flagged
-           bare number 37053 — no <cite> tag — flagged
+Validator: bare number 6363 — no <cite> tag — flagged
+           bare number 31814 — no <cite> tag — flagged
 
-Retry:    "Revenue was <cite ref='order:5001'>₹37,053</cite> and
+Retry:    "Revenue was <cite ref='order:5001'>₹31,814</cite> and
            ad clicks were <cite ref='insight:camp_001:2026-04-15'>5</cite>.
-           Computed revenue per click: ₹7,411 — no dedicated provenance anchor."
-Validator: order:5001 → resolves ✓; 7411 still bare → ⚠ badge shown to user
+           Computed revenue per click: ₹6,363 — no dedicated provenance anchor."
+Validator: order:5001 → resolves ✓; 6363 still bare → ⚠ badge shown to user
 ```
 
 Working as designed. The correct v1 fix: a `compute()` tool that returns a `computed:` provenance ID for arithmetic results, the same way `compare` already does for period deltas.
@@ -370,7 +370,7 @@ Honest per-file breakdown:
 | `app/chat/loop.py` | Specified tool schema, retry logic, routing contract | Generated API calls and message threading; I added `for...else` MAX_TURNS guard |
 | `app/chat/routing/` | Designed signals and cascade contract; chose FrugalGPT over RouteLLM (OpenAI path only) | Generated HeuristicRouter and signal regexes; I reviewed all 8 signals |
 | `app/agents/margin_watch.py` | Specified 3 proposal types and NOT_SENT contract | Generated proposal logic; I verified ₹ impact calculations |
-| `scripts/seed_demo_merchant.py` | Specified ground-truth values (₹37,053 30d revenue, Shadowfax 47.8% RTO) | Generated fixture data |
+| `scripts/seed_demo_merchant.py` | Specified ground-truth values (₹31,814 30d revenue, Shadowfax 47.8% RTO) | Generated fixture data |
 | `tests/eval/golden_questions.py` | Specified questions, ground-truth assertions, adversarial cases | Generated test bodies; I fixed 2 wrong assertions and added 3 adversarial questions |
 | README | Wrote all prose | Drafted structure for some sections |
 

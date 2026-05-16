@@ -34,6 +34,14 @@ def test_raw_model_map_covers_all_resources():
 
 @pytest.mark.skipif(os.getenv("DATABASE_URL") is None, reason="Requires live DB")
 def test_double_ingest_yields_single_row():
+    """Verify that a second ingest of the same source_record_id:
+    1. does not create a duplicate row (idempotency), and
+    2. preserves the *original* payload — matching the runner's on_conflict_do_update
+       strategy which only updates fetched_at/run_id so that citation round-trips
+       always resolve to the first full fetch, not a potentially partial re-fetch.
+    """
+    import datetime
+
     from sqlalchemy.dialects.postgresql import insert as pg_insert
 
     from app.warehouse.db import SessionLocal, engine, set_merchant
@@ -42,33 +50,76 @@ def test_double_ingest_yields_single_row():
     Base.metadata.create_all(engine)
     with SessionLocal() as db:
         set_merchant(db, "test_idempotent")
-        payload = {"id": 99999, "total_price": "100.00"}
-        for _ in range(2):
-            stmt = (
-                pg_insert(RawShopifyOrder.__table__)
-                .values(
-                    merchant_id="test_idempotent",
-                    source_record_id="order:99999",
-                    payload=payload,
-                    run_id="run_test_idempotent",
-                )
-                .on_conflict_do_update(
-                    constraint="uq_raw_shopify_orders",
-                    set_={"payload": payload},
-                )
-            )
-            db.execute(stmt)
-            db.commit()
 
-        count = (
+        original_payload = {"id": 99999, "total_price": "100.00"}
+        second_payload = {"id": 99999, "total_price": "999.00"}
+
+        # First insert — establishes the canonical payload.
+        stmt_first = (
+            pg_insert(RawShopifyOrder.__table__)
+            .values(
+                merchant_id="test_idempotent",
+                source_record_id="order:99999",
+                payload=original_payload,
+                fetched_at=datetime.datetime.now(datetime.timezone.utc),
+                run_id="run_test_idempotent_1",
+            )
+            .on_conflict_do_update(
+                constraint="uq_raw_shopify_orders",
+                set_={
+                    "fetched_at": datetime.datetime.now(datetime.timezone.utc),
+                    "run_id": "run_test_idempotent_1",
+                },
+            )
+        )
+        db.execute(stmt_first)
+        db.commit()
+
+        # Second insert with a *different* payload — runner must NOT overwrite.
+        stmt_second = (
+            pg_insert(RawShopifyOrder.__table__)
+            .values(
+                merchant_id="test_idempotent",
+                source_record_id="order:99999",
+                payload=second_payload,
+                fetched_at=datetime.datetime.now(datetime.timezone.utc),
+                run_id="run_test_idempotent_2",
+            )
+            .on_conflict_do_update(
+                constraint="uq_raw_shopify_orders",
+                set_={
+                    "fetched_at": datetime.datetime.now(datetime.timezone.utc),
+                    "run_id": "run_test_idempotent_2",
+                },
+            )
+        )
+        db.execute(stmt_second)
+        db.commit()
+
+        rows = (
             db.query(RawShopifyOrder)
             .filter_by(
                 merchant_id="test_idempotent",
                 source_record_id="order:99999",
             )
-            .count()
+            .all()
         )
-        assert count == 1, f"Expected 1 row after double ingest, got {count}"
+
+        # Idempotency: exactly one row regardless of how many times we ingest.
+        assert len(rows) == 1, f"Expected 1 row after double ingest, got {len(rows)}"
+
+        # Payload preservation: original payload must survive the second ingest.
+        # The citation layer resolves <cite> tags to the raw payload in provenance;
+        # if the payload were overwritten by a partial re-fetch the cited number
+        # could no longer be verified against the source record.
+        row = rows[0]
+        assert row.payload.get("total_price") == "100.00", (
+            f"Original payload was overwritten: got total_price={row.payload.get('total_price')!r}, "
+            "expected '100.00'. Runner must preserve the first-fetched payload."
+        )
+        assert row.run_id == "run_test_idempotent_2", (
+            "run_id should be updated to the latest run on conflict"
+        )
 
         # Cleanup
         db.query(RawShopifyOrder).filter_by(

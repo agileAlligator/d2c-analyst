@@ -102,7 +102,15 @@ cost is not in Shopify, Meta, or Shiprocket feeds.
 **Why not fixed**: COGS would need to be supplied as a separate data source and
 joined at order or SKU level.
 
-## 8. Indian-format numbers in bare_number_re
+## 8. Links table not yet consumed by metric queries
+
+identity.py writes cross-source entity links (Shopify order ↔ Shiprocket shipment at conf 1.0; Meta campaign ↔ Shopify order at conf 0.6) to the `links` table. The metric catalog currently re-implements these joins inline via JSONB attribute equality — it does not query the `links` table or filter by confidence score.
+
+Why not fixed: wiring links into the SQL catalog means rewriting multi-join CTEs in contribution_margin and roas, where the discount-code attribution (conf 0.6) would need a configurable confidence threshold. This is v0.2 scope — the per-query JSONB equality is deterministically correct for the demo merchant; the confidence threshold matters at scale when many low-confidence links compete.
+
+Impact: low for v0 (single merchant, clean data). At 10k merchants with fuzzy identity, queries without confidence filtering will silently over-count attributed revenue.
+
+## 9. Indian-format numbers in bare_number_re
 
 **Query type**: Model writes bare "₹1,01,472" outside a cite tag.
 

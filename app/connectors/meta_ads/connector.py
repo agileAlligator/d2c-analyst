@@ -8,7 +8,7 @@ from app.connectors.base import BaseConnector, ConnectorMeta, RawRecord
 
 logger = logging.getLogger(__name__)
 
-RESOURCES = ["campaigns", "adsets", "ads", "insights"]
+RESOURCES = ["campaigns", "insights"]
 API_VERSION = "v20.0"
 BASE = f"https://graph.facebook.com/{API_VERSION}"
 
@@ -41,10 +41,6 @@ class MetaAdsConnector(BaseConnector):
     def pull(self, resource: str, since: str | None = None) -> Iterator[RawRecord]:
         if resource == "campaigns":
             yield from self._pull_campaigns()
-        elif resource == "adsets":
-            yield from self._pull_adsets()
-        elif resource == "ads":
-            yield from self._pull_ads()
         elif resource == "insights":
             yield from self._pull_insights(since)
         else:
@@ -56,22 +52,6 @@ class MetaAdsConnector(BaseConnector):
             f"{BASE}/{self._account_id}/campaigns",
             {"fields": fields, "limit": 100},
             "campaign",
-        )
-
-    def _pull_adsets(self) -> Iterator[RawRecord]:
-        fields = "id,name,campaign_id,status,daily_budget,targeting,optimization_goal"
-        yield from self._paginate(
-            f"{BASE}/{self._account_id}/adsets",
-            {"fields": fields, "limit": 100},
-            "adset",
-        )
-
-    def _pull_ads(self) -> Iterator[RawRecord]:
-        fields = "id,name,adset_id,campaign_id,status,creative"
-        yield from self._paginate(
-            f"{BASE}/{self._account_id}/ads",
-            {"fields": fields, "limit": 100},
-            "ad",
         )
 
     def _pull_insights(self, since: str | None) -> Iterator[RawRecord]:

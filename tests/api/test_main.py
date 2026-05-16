@@ -20,7 +20,7 @@ from app.warehouse.db import get_db
 # ---------------------------------------------------------------------------
 
 GOOD_RESULT = {
-    "answer": "Revenue was ₹37,053.",
+    "answer": "Revenue was ₹31,814.",
     "all_citations_valid": True,
     "issues": [],
     "tool_calls": [{"tool": "query_metric", "input": {}, "result": {}}],

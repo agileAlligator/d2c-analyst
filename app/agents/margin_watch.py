@@ -3,12 +3,12 @@ import logging
 from decimal import Decimal
 
 from app.agents.base import BaseAgent, Proposal
+from app.config import settings
 from app.warehouse.metrics.catalog import query_metric
 
 logger = logging.getLogger(__name__)
 
 MARGIN_FLOOR = Decimal("0")         # flag SKUs with margin < 0
-DECAY_THRESHOLD = 0.20              # flag SKUs where margin dropped >20% WoW
 
 
 class MarginWatchAgent(BaseAgent):
@@ -120,7 +120,7 @@ class MarginWatchAgent(BaseAgent):
             return
 
         sorted_couriers = sorted(
-            [r for r in result.rows if r.get("total_shipments", 0) >= 5],
+            [r for r in result.rows if r.get("total_shipments", 0) >= settings.min_shipments_for_courier_signal],
             key=lambda r: float(r.get("rto_rate") or 0),
             reverse=True,
         )
@@ -133,8 +133,8 @@ class MarginWatchAgent(BaseAgent):
         rto_count = int(worst.get("rto_count") or 0)
         courier = worst.get("courier", "unknown")
 
-        # Estimate impact: each RTO costs ~₹150 in reverse logistics + lost COD
-        est_impact = rto_count * 150.0
+        # Estimate impact: each RTO costs rto_unit_cost_inr (config) in reverse logistics + lost COD
+        est_impact = rto_count * settings.rto_unit_cost_inr
 
         self.log(f"Courier '{courier}' has RTO rate {rto_rate:.1%} ({rto_count} RTOs).")
 
@@ -179,16 +179,17 @@ class MarginWatchAgent(BaseAgent):
         blended_roas = total_revenue / total_spend if total_spend else 0
         self.log(f"Blended ROAS (14d): {blended_roas:.2f}x (spend ₹{total_spend:,.0f})")
 
-        if blended_roas < 2.0:
+        if blended_roas < settings.roas_alert_threshold:
+            pause_fraction = settings.adset_pause_cut_fraction
             self.emit_proposal(Proposal(
                 action_type="pause_adset",
                 entity_key="meta:all_campaigns",
-                expected_inr_impact=total_spend * 0.3,  # rough: cutting 30% of spend at low ROAS
+                expected_inr_impact=total_spend * pause_fraction,
                 reasoning=(
                     f"Blended ROAS is {blended_roas:.2f}x over the last 14 days "
                     f"(₹{total_spend:,.0f} spend, ₹{total_revenue:,.0f} attributed revenue). "
-                    f"Pausing the bottom 30% of campaigns by spend could save "
-                    f"~₹{total_spend * 0.3:,.0f} while preserving higher-ROAS campaigns."
+                    f"Pausing the bottom {pause_fraction:.0%} of campaigns by spend could save "
+                    f"~₹{total_spend * pause_fraction:,.0f} while preserving higher-ROAS campaigns."
                 ),
                 provenance_ids=(spend_result.provenance_ids + revenue_result.provenance_ids)[:5],
                 would_do_api_call={

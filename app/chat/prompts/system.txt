@@ -35,7 +35,7 @@ Numbers without a <cite> tag will be stripped before the user sees them — so i
     - "average daily revenue": divide a 30d total by 30 → stripped
     - "X% of spend went to Campaign Y": Y_spend / total_spend → stripped
     - "refund rate of X%": refunds / orders → stripped
-    Instead, state the absolute totals with the window: "Revenue over the trailing 30d was <cite ref='...'>₹37,053</cite>" without dividing.
+    Instead, state the absolute totals with the window: "Revenue over the trailing 30d was <cite ref='...'>₹31,814</cite>" without dividing.
     The ONLY ratio metrics that ARE directly citeable: rto_rate_pct, roas, cac, average_order_value. Everything else: do not divide in prose.
 
 ## Available metrics & units

@@ -78,7 +78,7 @@ class TestChatLoopIntegration:
                             break
 
             ref = captured_prov_id[0] or "order:5000"
-            rev_str = captured_revenue[0] or "37053"
+            rev_str = captured_revenue[0] or "31814"
             return _make_response(
                 content=f'Total revenue in the last 30 days was <cite ref="{ref}">₹{rev_str}</cite>.',
                 finish_reason="stop",
@@ -233,7 +233,7 @@ class TestChatLoopIntegration:
             # gpt-4o cascade response
             ref = captured_prov_id[0] or "order:5000"
             return _make_response(
-                content=f'Revenue was <cite ref="{ref}">₹37,053</cite> last month.',
+                content=f'Revenue was <cite ref="{ref}">₹31,814</cite> last month.',
                 finish_reason="stop",
             )
 

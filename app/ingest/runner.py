@@ -101,15 +101,6 @@ def run_connector(merchant_id: str, connector_name: str, db: Session) -> int:
     return total
 
 
-def _plural(resource_type: str) -> str:
-    mapping = {
-        "order": "orders", "product": "products", "refund": "refunds",
-        "customer": "customers", "insight": "insights", "campaign": "campaigns",
-        "adset": "adsets", "ad": "ads", "shipment": "shipments",
-    }
-    return mapping.get(resource_type, resource_type + "s")
-
-
 def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     parser = argparse.ArgumentParser()

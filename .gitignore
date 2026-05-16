@@ -19,3 +19,10 @@ venv/
 # misc
 .DS_Store
 *.log
+
+# test / lint artefacts
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+.ruff_cache/

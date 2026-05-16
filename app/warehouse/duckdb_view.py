@@ -29,7 +29,10 @@ def get_duckdb_conn() -> duckdb.DuckDBPyConnection:
 
 def _parse_url() -> dict:
     # postgresql://user:pw@host:port/db
-    url = settings.database_url
+    # Use the analytics URL (superuser) so DuckDB's own Postgres connections can
+    # read past RLS.  Merchant isolation is enforced by the view-layer WHERE
+    # clause in sandboxed_sql() — see settings.database_url_analytics docstring.
+    url = settings.database_url_analytics
     url = url.replace("postgresql://", "").replace("postgres://", "")
     user_pw, rest = url.split("@", 1)
     user, pw = user_pw.split(":", 1)

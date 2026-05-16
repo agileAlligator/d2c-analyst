@@ -433,10 +433,14 @@ def query_metric(
                     f"Omit group_by or query one of those metrics instead."
                 )
 
-    # Flatten provenance IDs, filtering out None
+    # Flatten provenance IDs, filtering out None.
+    # Use .get() (not .pop()) so each row retains its own provenance list;
+    # the agent uses per-row IDs to cite only sources relevant to that order.
     prov_ids: list[str] = []
     for row in rows:
-        ids = row.pop("provenance_ids", None) or []
-        prov_ids.extend(v for v in ids if v is not None)
+        ids = row.get("provenance_ids") or []
+        ids = [v for v in ids if v is not None]
+        row["provenance_ids"] = sorted({str(v) for v in ids})
+        prov_ids.extend(ids)
 
     return MetricResult(rows=rows, provenance_ids=list(set(prov_ids)), sql_used=sql.strip())

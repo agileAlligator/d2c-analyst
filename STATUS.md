@@ -1,7 +1,7 @@
 # Project Status
 
-**Last updated:** 2026-05-13
-**Phase:** Complete — v0.1.1 (post-adversarial hardening)
+**Last updated:** 2026-05-16
+**Phase:** Complete — v0.1.3 (evaluation hardening)
 
 ## What's built
 
@@ -22,15 +22,18 @@
 | Chat tool-use loop | ✅ | 6 tools, gpt-4o/gpt-4o-mini via router, 12-turn max, json serialization fixed |
 | Model router | ✅ | HeuristicRouter: 8 signals → gpt-4o-mini or gpt-4o; FrugalGPT cascade on citation fail |
 | Citation validator | ✅ | server-side, always scans bare numbers ≥100, 2 retries, unverified badge fallback |
-| Margin Watch agent | ✅ | courier switch, ad pause (ROAS 1.35x below 2.0 threshold), price raise proposals; NOT_SENT enforced |
+| Margin Watch agent | ✅ | courier switch, ad pause (ROAS 1.45x below 2.0 threshold), price raise proposals; NOT_SENT enforced |
 | Streamlit UI | ✅ | chat + tool call trace + routing badge (⚡/🧠) |
 | FastAPI | ✅ | /chat, /runs, /health; RoutingInfo in ChatResponse |
 | Seed data | ✅ | demo: 80 orders, 30d Meta (ROAS 1.35x), 80 shipments; demo2: 5 orders for RLS isolation |
-| RLS hardening | ✅ | SET LOCAL GUC, no IS NULL escape, called at ingest + tools + agent |
+| RLS hardening | ✅ | d2c_app role (NOSUPERUSER NOBYPASSRLS); NullPool + after_begin listener; GUC enforced end-to-end |
 | Eval suite | ✅ | 19 golden questions (incl. 3 adversarial), citation coverage ≥80%, accuracy ≥70% |
-| Adversarial hardening | ✅ | 7-round loop; 0 Slytherin points in final round; 116 unit tests green |
+| Adversarial hardening | ✅ | 7-round loop; 0 Slytherin points in final round |
+| Connector fixture tests | ✅ | Meta Ads + Shiprocket fixture JSON + 16 offline tests |
+| Bench script | ✅ | scripts/bench_ingest.py; 200 rows at ~335 rows/sec; make bench |
+| Seed determinism | ✅ | BASE_DATE=2026-05-13 anchor; re-seeds produce identical analytical output |
 | CI | ✅ | GitHub Actions: lint + pytest (eval skipped when OPENAI_API_KEY=dummy) |
-| README | ✅ | All 9 brief questions answered; real agent run log (1.35x ROAS, ₹4,860/month) |
+| README | ✅ | All 9 brief questions answered; real agent run log (1.45x ROAS, ₹5,310/month) |
 
 ## Key decisions
 

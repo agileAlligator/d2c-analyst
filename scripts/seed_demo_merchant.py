@@ -8,6 +8,7 @@ from random import Random
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.warehouse.db import SessionLocal
+from app.warehouse.migrations.create_app_role import run as create_app_role
 from app.warehouse.migrations.create_cursors import run as create_cursors
 from app.warehouse.migrations.create_tables import run as create_tables
 from app.warehouse.models import (
@@ -21,6 +22,9 @@ from app.warehouse.models import (
 
 MERCHANT_ID = "demo"
 RNG = Random(42)
+
+# Deterministic anchor — re-seeds produce identical timestamps so README figures stay valid.
+BASE_DATE = datetime(2026, 5, 13, tzinfo=UTC)
 
 SKUS = [
     ("SKU-001", "Organic Cotton Tee", 799),
@@ -37,11 +41,15 @@ CAMPAIGNS = [
 ]
 
 
-def rand_date(days_ago_max=60) -> datetime:
-    return datetime.now(UTC) - timedelta(days=RNG.randint(0, days_ago_max))
+def rand_date(days_ago_max: int = 60) -> datetime:
+    return BASE_DATE - timedelta(days=RNG.randint(0, days_ago_max))
 
 
 def seed():
+    from sqlalchemy import create_engine
+    import os
+    bootstrap_url = os.environ.get("DATABASE_URL", "postgresql://d2c:d2c@localhost:5434/d2c")
+    create_app_role(create_engine(bootstrap_url))
     create_tables()
     create_cursors()
 
@@ -155,7 +163,7 @@ def _seed_meta(db):
 
     # Daily insights for each campaign for last 30 days
     for days_ago in range(30):
-        date = (datetime.now(UTC) - timedelta(days=days_ago)).strftime("%Y-%m-%d")
+        date = (BASE_DATE - timedelta(days=days_ago)).strftime("%Y-%m-%d")
         for camp_id, camp_name in CAMPAIGNS:
             spend = RNG.uniform(180, 480)
             impressions = int(spend * RNG.uniform(100, 300))

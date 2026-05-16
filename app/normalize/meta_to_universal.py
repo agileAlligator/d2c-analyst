@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.normalize.shopify_to_universal import _parse_dt, _upsert_entity, _upsert_event
 from app.provenance.record import record as prov_record
+from app.warehouse.db import set_merchant
 from app.warehouse.models import RawMetaCampaign, RawMetaInsight
 
 logger = logging.getLogger(__name__)
@@ -13,6 +14,7 @@ TRANSFORM_ID = "meta_normalizer_v1"
 
 
 def normalize_campaigns(db: Session, merchant_id: str) -> int:
+    set_merchant(db, merchant_id)
     rows = db.query(RawMetaCampaign).filter_by(merchant_id=merchant_id).all()
     count = 0
     for raw in rows:
@@ -32,6 +34,7 @@ def normalize_campaigns(db: Session, merchant_id: str) -> int:
 
 
 def normalize_insights(db: Session, merchant_id: str) -> int:
+    set_merchant(db, merchant_id)
     rows = db.query(RawMetaInsight).filter_by(merchant_id=merchant_id).all()
     count = 0
     for raw in rows:

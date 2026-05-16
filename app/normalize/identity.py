@@ -6,12 +6,14 @@ from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
+from app.warehouse.db import set_merchant
 from app.warehouse.models import Link
 
 logger = logging.getLogger(__name__)
 
 
 def resolve_all(db: Session, merchant_id: str) -> dict[str, int]:
+    set_merchant(db, merchant_id)
     counts = {}
     counts["order_shipment"] = _link_shopify_shiprocket(db, merchant_id)
     counts["order_campaign"] = _link_meta_shopify(db, merchant_id)

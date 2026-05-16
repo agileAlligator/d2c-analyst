@@ -1,0 +1,48 @@
+{
+  "data": [
+    {
+      "campaign_id": "23851000000001",
+      "campaign_name": "Diwali Sale 2024",
+      "adset_id": "23851000000011",
+      "adset_name": "Retargeting - 30d",
+      "ad_id": "23851000000021",
+      "ad_name": "Carousel v1",
+      "spend": "2340.00",
+      "impressions": "45000",
+      "clicks": "610",
+      "reach": "38000",
+      "cpc": "3.84",
+      "cpm": "52.00",
+      "ctr": "1.36",
+      "actions": [{"action_type": "purchase", "value": "12"}],
+      "action_values": [{"action_type": "purchase", "value": "9360.00"}],
+      "date_start": "2024-01-15",
+      "date_stop": "2024-01-15"
+    },
+    {
+      "campaign_id": "23851000000002",
+      "campaign_name": "New Year Push 2025",
+      "adset_id": "23851000000012",
+      "adset_name": "Prospecting - LAL",
+      "ad_id": "23851000000022",
+      "ad_name": "Video Ad v2",
+      "spend": "1800.00",
+      "impressions": "60000",
+      "clicks": "430",
+      "reach": "52000",
+      "cpc": "4.19",
+      "cpm": "30.00",
+      "ctr": "0.72",
+      "actions": [{"action_type": "purchase", "value": "8"}],
+      "action_values": [{"action_type": "purchase", "value": "5600.00"}],
+      "date_start": "2024-01-15",
+      "date_stop": "2024-01-15"
+    }
+  ],
+  "paging": {
+    "cursors": {
+      "before": "cursor_before_abc",
+      "after": "cursor_after_def"
+    }
+  }
+}

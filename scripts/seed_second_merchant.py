@@ -13,6 +13,9 @@ from app.warehouse.models import RawShopifyOrder
 MERCHANT_ID = "demo2"
 RNG = Random(99)
 
+# Deterministic anchor — re-seeds produce identical timestamps so README figures stay valid.
+BASE_DATE = datetime(2026, 5, 13, tzinfo=UTC)
+
 
 def seed():
     with SessionLocal() as db:
@@ -21,7 +24,7 @@ def seed():
             order_id = 9000 + i
             order_number = 2000 + i
             total = RNG.randint(500, 3000)
-            created_at = datetime.now(UTC) - timedelta(days=RNG.randint(1, 30))
+            created_at = BASE_DATE - timedelta(days=RNG.randint(1, 30))
             order = {
                 "id": order_id,
                 "order_number": str(order_number),

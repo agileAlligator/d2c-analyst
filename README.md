@@ -2,13 +2,13 @@
 
 AI analyst + autonomous Margin Watch agent for D2C brands. Chat with your data. Get cited answers. Watch your margins.
 
-On the seed merchant (80 orders, 30-day window), Margin Watch surfaces **~₹5,824/month** in actionable savings: ₹1,650 from a courier switch (Shadowfax→BlueDart), ₹4,122 from pausing underperforming campaigns (ROAS 1.35x, below the 2.0x threshold), and ₹52 from repricing two negative-margin SKUs.
+On the seed merchant (80 orders, 30-day window), Margin Watch surfaces **~₹5,310/month** in actionable savings: ₹1,650 from a courier switch (Shadowfax→BlueDart), ₹3,608 from pausing underperforming campaigns (ROAS 1.45x, below the 2.0x threshold), and ₹52 from repricing two negative-margin SKUs.
 
 ---
 
 ## 1. What I built
 
-**Connectors** pull from Shopify (orders, refunds, products), Meta Ads (campaigns, ad sets, insights), and Shiprocket (shipments, RTO events) into immutable `raw_*` tables in Postgres — payloads stored as JSONB with a `source_record_id` that never changes. A **normalizer** transforms those raw rows into a universal `entities + events + links` model with a first-class `provenance` table that maps every derived row back to the raw rows that produced it. A **chat agent** (GPT-4o preferred; GPT-4o / gpt-4o-mini via heuristic router when only an OpenAI key is present; tool-use loop) answers questions over typed metrics and sandboxed SQL; every number in the response is server-side-validated against provenance before the user sees it — uncited numbers are stripped or flagged, not passed through. A scheduled **Margin Watch agent** scans the warehouse, surfaces the top ₹-saving actions (courier switch, ad pause, price raise), and writes a run log with every claim cited back to a source row. It never calls a source API. The whole thing is keyed by `merchant_id` end-to-end — every table, every RLS policy, every tool call — so the path from 1 to 10 000 merchants is row-level isolation + worker sharding, not a rewrite.
+**Connectors** pull from Shopify (orders, refunds, products), Meta Ads (campaigns, ad sets, insights), and Shiprocket (shipments, RTO events) into immutable `raw_*` tables in Postgres — payloads stored as JSONB with a `source_record_id` that never changes. A **normalizer** transforms those raw rows into a universal `entities + events + links` model with a first-class `provenance` table that maps every derived row back to the raw rows that produced it. A **chat agent** (GPT-4o preferred; GPT-4o / gpt-4o-mini via heuristic router when only an OpenAI key is present; tool-use loop) answers questions over typed metrics and sandboxed SQL; every number in the response is server-side-validated against provenance before the user sees it — uncited numbers are stripped or flagged, not passed through. An on-demand **Margin Watch agent** scans the warehouse, surfaces the top ₹-saving actions (courier switch, ad pause, price raise), and writes a run log with every claim cited back to a source row. It never calls a source API. The whole thing is keyed by `merchant_id` end-to-end — every table, every RLS policy, every tool call — so the path from 1 to 10 000 merchants is row-level isolation + worker sharding, not a rewrite.
 
 ```
                  ┌─────────────────────────────────────────┐
@@ -43,7 +43,7 @@ On the seed merchant (80 orders, 30-day window), Margin Watch surfaces **~₹5,8
                  │ Shopify  │  │ Meta Ads │  │Shiprocket │
                  └──────────┘  └──────────┘  └───────────┘
         ┌──────────────────────────────────────────────────┐
-        │  Margin Watch Agent (scheduled, never sends)     │
+        │  Margin Watch Agent (on-demand, never sends)     │
         └──────────────────────────────────────────────────┘
 ```
 
@@ -92,7 +92,11 @@ Why this shape:
 - **`provenance` as a first-class table, not a column,** because a single normalized `order_revenue` event can derive from order + refund + shipping cost rows simultaneously. Citations must enumerate all of them. A single `provenance_id` column can't express this.
 - **JSONB attribute bags** keep the normalized layer flexible. Hot fields get promoted to columns; everything else waits.
 
-RLS is enforced via a Postgres GUC (`app.current_merchant`) set to the merchant ID at the start of every transaction. Every policy uses `merchant_id = current_setting('app.current_merchant', true)`. There is no escape — the setting is `SET LOCAL` so it can't leak across transaction boundaries.
+Isolation runs on two enforcement paths:
+
+**SQLAlchemy path (writes + typed metrics):** The app connects as `d2c_app`, a role created `NOSUPERUSER NOBYPASSRLS` (see `app/warehouse/migrations/create_app_role.py`). Every session calls `set_merchant(db, merchant_id)` before any DML, setting `app.current_merchant` as a session-level GUC. The engine uses `NullPool` so each session gets a fresh Postgres connection that is never returned to a pool — the GUC cannot leak between sessions. An `after_begin` session listener replays the GUC via `SET LOCAL` at the start of every new SQLAlchemy transaction, so callers don't need to re-call `set_merchant` after each commit. Postgres enforces the RLS policy on every table — because `d2c_app` is `NOBYPASSRLS`, the policy cannot be skipped even if a future code path omits `set_merchant`. Queries return zero rows rather than cross-tenant data. Bootstrap and migration use the `d2c` superuser; the runtime path never does.
+
+**DuckDB analytical path (`sql` tool, `sandboxed_sql`):** DuckDB creates its own Postgres connections and cannot participate in the SQLAlchemy session's GUC lifecycle. This path connects with superuser credentials (`database_url_analytics`) so RLS is bypassed — but merchant isolation is enforced instead by the per-query `WHERE merchant_id = '<merchant_id>'` view injected in `sandboxed_sql()`. This is application-layer filtering, not database-layer policy; the tradeoff is intentional and documented here rather than obscured. A future hardening step would be a separate restricted role with a GUC set via `options=` in the DuckDB attach string, if the DuckDB postgres extension gains that capability.
 
 ---
 
@@ -103,7 +107,7 @@ RLS is enforced via a Postgres GUC (`app.current_merchant`) set to the merchant 
 | Tool | What it does |
 |---|---|
 | `query_metric(metric, group_by, time_range)` | Typed, pre-validated SQL for **revenue, refunds, ad_spend, rto_rate, contribution_margin, cac, average_order_value, roas, orders**. Returns rows + provenance IDs. group_by supported: campaign, courier, date, week, month (schema-validated — raises a descriptive error if the requested dimension doesn't exist on the metric's entity, preventing silent NULL-group fabrication). |
-| `sql(query)` | SELECT-only DuckDB against a sandboxed Postgres view. Returns rows + provenance bundle. Guard-railed via SQL parser; DuckDB `enable_external_access = false` + token blocklist prevent exfiltration via file-read functions or schema inspection calls. |
+| `sql(query)` | SELECT-only DuckDB against a sandboxed Postgres view. Returns rows + provenance bundle. Three sandboxing layers: (1) allowlist token parser blocking DDL, writes, and file-read functions (READ_CSV, READ_PARQUET, GLOB) plus DuckDB introspection calls (DUCKDB_SETTINGS, DUCKDB_SECRETS); (2) Postgres attached READ_ONLY; (3) per-query temp views with WHERE merchant_id filter. Note: `enable_external_access=false` is intentionally omitted — it also blocks LOAD/ATTACH TCP connections, which breaks the postgres extension. |
 | `list_entities(type, filters, limit)` | Discover what's in the warehouse. |
 | `get_raw(provenance_id)` | Let the model fact-check itself by reading the source payload. Enables round-trip from answer → citation → original JSON. |
 | `compare(metric, period_a, period_b)` | Forces explicit delta with both citations — prevents the model from doing arithmetic without anchors. |
@@ -160,9 +164,9 @@ Why this approach over alternatives: RouteLLM (trained classifier) requires labe
 
 **Why Margin Watch:** it is the only agent where all three connectors are load-bearing simultaneously — remove any one and the proposals degrade. The courier switch needs Shiprocket RTO data. The ad pause needs Meta spend. The price raise needs Shopify revenue *and* Shiprocket shipping cost to compute the actual margin. That cross-connector dependency is what makes it a real test of the universal model, not a single-source query with an LLM wrapper.
 
-The ad-pause proposal on the seed merchant fires because ROAS is 1.35x — below the 2.0x threshold, and below break-even on a blended basis, but not a number a founder running on vibes would notice. They'd see "ads are running," not "ads are generating ₹1.35 for every ₹1 spent on ₹13,740 of ad spend, and pausing the bottom 30% by spend preserves higher-ROAS campaigns while recovering ~₹4,122." That cross-source calculation — spend from Meta, revenue attribution through discount codes, shipping cost from Shiprocket — is what the agent exists to do. On the seed merchant it surfaces ~₹5,824/month. At 10k merchants that compounds — that's the product.
+The ad-pause proposal on the seed merchant fires because ROAS is 1.45x — below the 2.0x threshold, and below break-even on a blended basis, but not a number a founder running on vibes would notice. They'd see "ads are running," not "ads are generating ₹1.45 for every ₹1 spent on ₹12,026 of ad spend, and pausing the bottom 30% by spend preserves higher-ROAS campaigns while recovering ~₹3,608." That cross-source calculation — spend from Meta, revenue attribution through discount codes, shipping cost from Shiprocket — is what the agent exists to do. On the seed merchant it surfaces ~₹5,310/month. At 10k merchants that compounds — that's the product.
 
-Runs every 6 hours (cron in Docker Compose; manually triggerable via `make agent`).
+Triggered on demand via `make agent`. Scheduling is deliberately deferred — at demo scale, on-demand is honest; production scheduling (cron/Airflow/Cloud Scheduler) belongs outside the app and is enumerated under the scale section.
 
 **What it does:**
 1. Queries `contribution_margin` for the last 14 days across all orders.
@@ -179,18 +183,18 @@ Every proposal includes:
 Real run output (`make agent` on seed data):
 
 ```
-Blended ROAS (14d): 1.35x (spend ₹13,740)
+Blended ROAS (14d): 1.45x (spend ₹12,026)
 
 ### 1. switch_courier — courier:Shadowfax
 **Expected impact:** ₹1,650
 **Reasoning:** Courier 'Shadowfax' has an RTO rate of 47.8% (11 returns in 30 days). Switching to 'BlueDart' (RTO rate 31.2%) could save ~₹1,650/month.
-**Provenance:** shipment:8043, shipment:8034, shipment:8072, shipment:8075, shipment:8026
+**Provenance:** shipment:8024, shipment:8028, shipment:8026, shipment:8067, shipment:8020
 **Would-do API call:** {'connector': 'shiprocket', 'action': 'update_courier_preference', 'body': {'preferred_courier': 'BlueDart'}, 'NOT_SENT': True}
 
 ### 2. pause_adset — meta:all_campaigns
-**Expected impact:** ₹4,122
-**Reasoning:** Blended ROAS is 1.35x over the last 14 days (₹13,740 spend, ₹18,484 attributed revenue). Pausing the bottom 30% of campaigns by spend could save ~₹4,122 while preserving higher-ROAS campaigns.
-**Provenance:** insight:camp_003:2026-05-04, insight:camp_003:2026-05-10, insight:camp_002:2026-05-06, insight:camp_002:2026-05-01, insight:camp_001:2026-05-11
+**Expected impact:** ₹3,608
+**Reasoning:** Blended ROAS is 1.45x over the last 14 days (₹12,026 spend, ₹17,485 attributed revenue). Pausing the bottom 30% of campaigns by spend could save ~₹3,608 while preserving higher-ROAS campaigns.
+**Provenance:** insight:camp_003:2026-05-05, insight:camp_001:2026-05-11, insight:camp_001:2026-05-05, insight:camp_001:2026-05-04, insight:camp_001:2026-05-12
 **Would-do API call:** {'connector': 'meta_ads', 'endpoint': 'POST /{ad-set-id}', 'body': {'status': 'PAUSED'}, 'NOT_SENT': True}
 
 ### 3. raise_price — order:1027
@@ -207,12 +211,13 @@ Blended ROAS (14d): 1.35x (spend ₹13,740)
 ## 6. Scale — 1 → 10,000 merchants
 
 What's built now:
-- `merchant_id` on every table. RLS enforced via Postgres GUC — no query touches another merchant's rows.
+- `merchant_id` on every table. RLS enforced via Postgres GUC (`app.current_merchant`) on the `d2c_app` role (`NOSUPERUSER NOBYPASSRLS`) — no query touches another merchant's rows on the SQLAlchemy path.
+- The engine uses `NullPool` (no connection reuse) so the GUC is replayed cleanly on every transaction via a `after_begin` session listener. At high concurrency, replace with a bounded pool + connection-scoped GUC injection.
 - Connector workers key on `(merchant_id, connector, cursor)` — re-running a job is a no-op.
 - Per-connector token-bucket rate limiter (shared across concurrent workers via the same Python process; Redis-shareable at scale).
 - Two seeded merchants (demo: 80 orders, demo2: 5 orders) proving isolation in the test suite.
 
-**Measured:** Single-process JSONB upsert across 10 synthetic merchants (200 rows) runs at **322 rows/sec** on Postgres 16 (docker, dev hardware). At 10k merchants × 100 Shopify orders/hour = ~278 rows/sec — already at the limit of single-process ingest. This is the first thing to shard.
+**Measured:** `scripts/bench_ingest.py` (10 synthetic merchants × 20 raw_shopify_orders = 200 rows, single Postgres connection) — run `make bench` for a live reading. Note this isolates DB write throughput; real ingest adds API latency and per-merchant cursor overhead. At 10k merchants × 100 Shopify orders/hour = ~278 rows/sec sustained — single-process ingest is the first thing to shard.
 
 What breaks first at 10k merchants:
 
@@ -222,7 +227,7 @@ What breaks first at 10k merchants:
 | Postgres JSONB write throughput | ~1k merchants at current density | Move raw payloads to S3; keep metadata index in Postgres; partition `events` by `(merchant_id, month)` |
 | LLM cost per chat turn | Linear with usage | Already built: heuristic router routes ~55% of queries to gpt-4o-mini; gpt-4o for synthesis only |
 | Citation validation latency | Long answers (>500 tokens) | Move out of request path; stream and validate per-sentence with early rejection |
-| Agent fan-out | 10k merchants × 6h = ~28k runs/day | Stagger by `hash(merchant_id) % 21600`; run against pre-materialized daily snapshots |
+| Agent fan-out | 10k merchants × daily = ~10k runs/day if scheduled | Stagger by `hash(merchant_id) % 86400`; run against pre-materialized daily snapshots |
 | Identity resolution hot path | As orders/links grow | Pre-compute candidates async; cache high-confidence links; floor at confidence 0.7 |
 
 ---
@@ -307,7 +312,7 @@ make bootstrap         # start db, install, seed demo+demo2, start api+ui
 
 make agent             # run Margin Watch once, prints proposals with ₹ impact
 make eval              # citation + accuracy suite (needs LLM key)
-pytest -q              # 116 tests (50 DB-gated, skipped without DATABASE_URL), offline, no API key
+pytest -q              # 144 tests pass offline (64 DB-gated, skipped without DATABASE_URL); 205 pass with live DB
 ```
 
 For production use, set `API_KEYS=your-secret-key:demo` in `.env` and pass `X-API-Key: your-secret-key` in API requests. `DEV_MODE=true` disables key enforcement for local development.
@@ -327,7 +332,7 @@ Ports: api `:10001`, ui `:10002`, db `:5434`
 | Meta Ads + Shiprocket | 5h | Shiprocket token auth from `.env`, no OAuth needed |
 | Universal schema + normalizers | 8h | Identity resolution, MD5 event IDs for idempotency |
 | Typed metrics + SQL sandbox | 4h | DuckDB attach, GROUP BY template bugs |
-| Chat tool-use loop + validator | 8h | Citation validator rewrite took most of this; validator now strips bare numbers (not just flags) and cross-checks cited values against tool results; DuckDB sandbox hardened (`enable_external_access=false`, extended token blocklist) |
+| Chat tool-use loop + validator | 8h | Citation validator rewrite took most of this; validator now strips bare numbers (not just flags) and cross-checks cited values against tool results; DuckDB sandbox hardened (allowlist token parser + READ_ONLY attach + per-query merchant_id view; `enable_external_access=false` omitted intentionally — it breaks the postgres extension) |
 | Margin Watch agent | 5h | Proposal contract, run log format |
 | Scale harness + RLS hardening | 5h | Opus review found 12 bugs; all fixed |
 | Eval suite + second merchant | 2h | Golden questions, scoreboard, RLS isolation test |

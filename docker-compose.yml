@@ -21,7 +21,8 @@ services:
     ports:
       - "10001:10001"
     environment:
-      DATABASE_URL: postgresql://d2c:d2c@db:5432/d2c
+      DATABASE_URL: postgresql://d2c_app:d2c_app@db:5432/d2c
+      DATABASE_URL_ANALYTICS: postgresql://d2c:d2c@db:5432/d2c
     env_file: .env
     depends_on:
       db:
@@ -35,7 +36,8 @@ services:
     ports:
       - "10002:10002"
     environment:
-      DATABASE_URL: postgresql://d2c:d2c@db:5432/d2c
+      DATABASE_URL: postgresql://d2c_app:d2c_app@db:5432/d2c
+      DATABASE_URL_ANALYTICS: postgresql://d2c:d2c@db:5432/d2c
       API_URL: http://api:10001
     env_file: .env
     depends_on:
@@ -47,7 +49,7 @@ services:
     build: .
     command: python -m app.ingest.runner --all
     environment:
-      DATABASE_URL: postgresql://d2c:d2c@db:5432/d2c
+      DATABASE_URL: postgresql://d2c_app:d2c_app@db:5432/d2c
     env_file: .env
     depends_on:
       db:
@@ -60,7 +62,8 @@ services:
     build: .
     command: python scripts/run_agent.py --merchant demo
     environment:
-      DATABASE_URL: postgresql://d2c:d2c@db:5432/d2c
+      DATABASE_URL: postgresql://d2c_app:d2c_app@db:5432/d2c
+      DATABASE_URL_ANALYTICS: postgresql://d2c:d2c@db:5432/d2c
     env_file: .env
     depends_on:
       db:

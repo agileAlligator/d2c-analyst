@@ -8,6 +8,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.provenance.record import record as prov_record
+from app.warehouse.db import set_merchant
 from app.warehouse.models import Entity, Event, RawShopifyOrder, RawShopifyRefund
 
 logger = logging.getLogger(__name__)
@@ -15,6 +16,7 @@ TRANSFORM_ID = "shopify_normalizer_v1"
 
 
 def normalize_orders(db: Session, merchant_id: str) -> int:
+    set_merchant(db, merchant_id)
     raw_orders = db.query(RawShopifyOrder).filter_by(merchant_id=merchant_id).all()
     count = 0
     for raw in raw_orders:
@@ -67,6 +69,7 @@ def _upsert_order(db: Session, merchant_id: str, raw: RawShopifyOrder):
 
 
 def normalize_refunds(db: Session, merchant_id: str) -> int:
+    set_merchant(db, merchant_id)
     raw_refunds = db.query(RawShopifyRefund).filter_by(merchant_id=merchant_id).all()
     count = 0
     for raw in raw_refunds:

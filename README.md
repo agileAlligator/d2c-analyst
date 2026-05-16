@@ -306,7 +306,7 @@ Working as designed. The correct v1 fix: a `compute()` tool that returns a `comp
 
 ```bash
 cp .env.example .env   # add OPENAI_API_KEY (required); connector keys optional
-                       # DEV_MODE=true is pre-set in .env.example for keyless local access
+                       # add DEV_MODE=true to .env for keyless local access
 make bootstrap         # start db, install, seed demo+demo2, start api+ui
 # UI at http://localhost:10002 — chat is live
 

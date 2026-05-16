@@ -34,7 +34,6 @@ def _link_shopify_shiprocket(db: Session, merchant_id: str) -> int:
            AND (
                e_order.attributes->>'order_number'   = e_ship.attributes->>'channel_order_id'
                OR e_order.attributes->>'shopify_order_id' = e_ship.attributes->>'channel_order_id'
-               OR e_order.attributes->>'id'           = e_ship.attributes->>'channel_order_id'
            )
         WHERE e_order.merchant_id = :mid
           AND e_order.entity_type = 'order'

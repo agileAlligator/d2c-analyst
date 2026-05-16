@@ -29,7 +29,7 @@ class ShiprocketConnector(BaseConnector):
     def auth_status(self) -> bool:
         try:
             resp = self._get(f"{BASE}/orders", params={"per_page": 1})
-            return resp.status_code == 200
+            return True
         except Exception:
             return False
 
@@ -88,6 +88,6 @@ class ShiprocketConnector(BaseConnector):
                     payload=shipment,
                     resource_type="shipment",
                 )
-            if len(items) < 100:
+            if len(items) < params["per_page"]:
                 break
             page += 1

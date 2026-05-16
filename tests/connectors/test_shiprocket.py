@@ -6,7 +6,6 @@ Exercises: correct RawRecord parsing, pagination (page-size stop condition), ret
 import json
 from pathlib import Path
 
-import httpx
 import pytest
 
 from app.connectors.shiprocket.connector import ShiprocketConnector

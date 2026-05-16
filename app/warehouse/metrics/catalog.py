@@ -131,28 +131,36 @@ METRIC_SQL: dict[str, str] = {
     # Bugs 15+16 fix: count denominator from entities (shipment type) so free-shipping orders
     # are included and the rate cannot exceed 100%.  Provenance is fetched via entity_id scalar
     # subquery (entities table, not events).
-    # Time filter uses en.first_seen with a literal window parameter — rto_rate has no
-    # ev.occurred_at reference so we cannot reuse TIME_FILTERS; query_metric substitutes
-    # {window} with the raw interval string (e.g. '30 days') for this metric only.
+    # Bug (time-window): filter RTO count by rto event's occurred_at (the actual shipment date
+    # set during normalization) rather than en.first_seen (which is always normalize-run time).
+    # The denominator (total_shipments) is intentionally unfiltered — we count all shipments
+    # as the base, and only restrict which RTOs fall in the window.
     "rto_rate": """
-        WITH agg AS (
+        WITH rto_events AS (
+            SELECT DISTINCT ev.entity_id
+            FROM events ev
+            WHERE ev.event_type = 'rto'
+              AND ev.merchant_id = :merchant_id
+              {time_filter}
+        ),
+        agg AS (
             SELECT
                 {group_by_select}
                 CAST(
-                    COUNT(DISTINCT CASE WHEN en.attributes->>'is_rto' = 'true' THEN en.entity_id END) AS float
+                    COUNT(DISTINCT CASE WHEN rto_ev.entity_id IS NOT NULL THEN en.entity_id END) AS float
                 ) / NULLIF(COUNT(DISTINCT en.entity_id), 0) AS rto_rate,
                 ROUND(
-                    100.0 * COUNT(DISTINCT CASE WHEN en.attributes->>'is_rto' = 'true' THEN en.entity_id END)
+                    100.0 * COUNT(DISTINCT CASE WHEN rto_ev.entity_id IS NOT NULL THEN en.entity_id END)
                         / NULLIF(COUNT(DISTINCT en.entity_id), 0),
                     1
                 ) AS rto_rate_pct,
-                COUNT(DISTINCT CASE WHEN en.attributes->>'is_rto' = 'true' THEN en.entity_id END) AS rto_count,
+                COUNT(DISTINCT CASE WHEN rto_ev.entity_id IS NOT NULL THEN en.entity_id END) AS rto_count,
                 COUNT(DISTINCT en.entity_id) AS total_shipments,
                 ARRAY_AGG(DISTINCT en.entity_id::text) AS event_ids
             FROM entities en
+            LEFT JOIN rto_events rto_ev ON rto_ev.entity_id = en.entity_id
             WHERE en.entity_type = 'shipment'
               AND en.merchant_id = :merchant_id
-              AND en.first_seen >= NOW() - INTERVAL '{window}'
               {extra_filters}
             {group_by_clause}
         )
@@ -339,15 +347,6 @@ TIME_FILTERS = {
     "90d": "ev.occurred_at >= NOW() - INTERVAL '90 days'",
 }
 
-# Raw interval strings for metrics that filter on en.first_seen instead of ev.occurred_at.
-# rto_rate uses {window} in its template so it cannot use TIME_FILTERS (which reference ev.*).
-TIME_WINDOWS = {
-    "7d": "7 days",
-    "14d": "14 days",
-    "30d": "30 days",
-    "90d": "90 days",
-}
-
 # Maps metric name to the primary value column (for compare tool)
 METRIC_VALUE_COL = {
     "revenue": "revenue",
@@ -375,14 +374,8 @@ def query_metric(
 
     template = METRIC_SQL[metric_name]
 
-    # rto_rate uses en.first_seen and a {window} literal — it has no ev.occurred_at reference,
-    # so we substitute {window} directly and leave {time_filter} absent from the template.
-    if metric_name == "rto_rate":
-        window = TIME_WINDOWS.get(time_range, "30 days") if time_range else "30 days"
-        time_filter = ""
-    else:
-        time_filter = f"AND {TIME_FILTERS[time_range]}" if time_range in TIME_FILTERS else ""
-        window = ""  # not used
+    # rto_rate now filters on rto event occurred_at, so it uses TIME_FILTERS like other metrics.
+    time_filter = f"AND {TIME_FILTERS[time_range]}" if time_range in TIME_FILTERS else ""
 
     if group_by and group_by in GROUP_BY_EXPRESSIONS:
         if metric_name == "roas":
@@ -409,8 +402,6 @@ def query_metric(
         "time_filter": time_filter,
         "extra_filters": "",
     }
-    if metric_name == "rto_rate":
-        fmt_kwargs["window"] = window
 
     sql = template.format(**fmt_kwargs)
 

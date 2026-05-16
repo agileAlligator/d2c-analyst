@@ -85,9 +85,22 @@ def _upsert_refund(db: Session, merchant_id: str, raw: RawShopifyRefund):
     order_id = str(p.get("order_id", "unknown"))
     natural_key = f"shopify:refund:{refund_id}"
 
+    # Resolve order_number from the linked order entity so the contribution_margin
+    # CTE can group refund events by the same key as order_revenue events.
+    order_number = None
+    order_entity = (
+        db.query(Entity)
+        .filter_by(merchant_id=merchant_id, entity_type="order")
+        .filter(Entity.attributes["shopify_order_id"].astext == order_id)
+        .first()
+    )
+    if order_entity:
+        order_number = order_entity.attributes.get("order_number")
+
     entity_id = _upsert_entity(db, merchant_id, "refund", natural_key, "shopify", {
         "shopify_refund_id": refund_id,
         "shopify_order_id": order_id,
+        "order_number": order_number,
         "note": p.get("note"),
     })
     prov_record(db, merchant_id, "entities", str(entity_id),

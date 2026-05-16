@@ -90,7 +90,7 @@ class ShopifyConnector(BaseConnector):
             logger.debug("Shopify %s: fetched %d records", endpoint, len(items))
             for item in items:
                 yield RawRecord(
-                    source_record_id=f"{key[:-1]}:{item['id']}",
+                    source_record_id=f"{key[:-1]}:{item.get('id', 'unknown')}",
                     payload=item,
                     resource_type=key[:-1],
                 )

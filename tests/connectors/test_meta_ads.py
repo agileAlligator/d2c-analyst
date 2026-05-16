@@ -6,7 +6,6 @@ Exercises: correct RawRecord parsing, multi-page pagination, retry on 429.
 import json
 from pathlib import Path
 
-import httpx
 import pytest
 
 from app.connectors.meta_ads.connector import MetaAdsConnector

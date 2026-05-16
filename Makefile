@@ -25,6 +25,7 @@ down:
 	docker compose down
 
 seed:
+	pip install -e . -q
 	$(DB_BOOTSTRAP) python3 scripts/seed_demo_merchant.py
 	$(DB_BOOTSTRAP) python3 scripts/seed_second_merchant.py
 	$(DB_BOOTSTRAP) python3 scripts/normalize.py --merchant demo

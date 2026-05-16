@@ -1,6 +1,6 @@
-Run the adversarial hardening loop on this codebase.
+Run the adversarial hardening loop on this codebase until Opus reviewers say CLEAN.
 
-**Loop structure — repeat until Opus reviewers say CLEAN:**
+**Loop structure:**
 
 ## Step 1 — Audit (5 Opus agents in parallel)
 
@@ -14,7 +14,7 @@ Spawn 5 Opus subagents simultaneously, each covering a non-overlapping slice:
 
 4. **Test suite** — `tests/` (excluding `tests/eval/`). Check: assertions verify actual content not just "doesn't crash", semantic correctness of each assertion, RLS isolation test exists, citation validator catches uncited numbers, idempotency tests test the runner (not just Postgres upserts directly), fixture/connector field alignment.
 
-5. **Infra + docs** — `docker-compose.yml`, `Makefile`, `.github/workflows/`, `pyproject.toml`, `app/config.py`, `README.md`, `STATUS.md`, `docs/`, `.env.example`. Check: bootstrap works on fresh clone (`docker compose up && make seed && make agent`), CI runs lint + pytest + skips eval on dummy key, all README claims are true (no false .env.example assertions, correct port numbers, correct role names), docs/ numbering sequential, wont_fix.md covers known gaps.
+5. **Infra + docs** — `docker-compose.yml`, `Makefile`, `.github/workflows/`, `pyproject.toml`, `app/config.py`, `README.md`, `STATUS.md`, `docs/`, `.env.example`. Check: bootstrap works on fresh clone (`docker compose up && make seed && make agent`), CI runs lint + pytest + skips eval on dummy key, all README claims are true, docs/ numbering sequential, wont_fix.md covers known gaps.
 
 Each agent prompt must say: "Report file:line for each actual bug, silent failure, broken contract, or spec mismatch. Do NOT flag style. If your slice is clean, say CLEAN."
 
@@ -45,9 +45,9 @@ Each reviewer: "Report file:line for any remaining issues. If your slice is clea
 ## Step 5 — Loop or commit
 
 - If any reviewer found real issues → go to Step 3 with those specific findings
-- If all 3 say CLEAN → commit all changes, push to origin, update STATUS.md phase
+- If all 3 say CLEAN → commit all changes with a descriptive message, push to origin, update STATUS.md phase
 
 **Hard rules throughout:**
-- Do not fix issues that are already in `docs/wont_fix.md`
+- Do not fix issues already in `docs/wont_fix.md`
 - Do not produce style-only commits
 - STATUS.md is always the last file updated

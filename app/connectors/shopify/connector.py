@@ -89,8 +89,10 @@ class ShopifyConnector(BaseConnector):
             items = data.get(key, [])
             logger.debug("Shopify %s: fetched %d records", endpoint, len(items))
             for item in items:
+                if "id" not in item:
+                    raise ValueError(f"Shopify {key[:-1]} record missing 'id': {item}")
                 yield RawRecord(
-                    source_record_id=f"{key[:-1]}:{item.get('id', 'unknown')}",
+                    source_record_id=f"{key[:-1]}:{item['id']}",
                     payload=item,
                     resource_type=key[:-1],
                 )

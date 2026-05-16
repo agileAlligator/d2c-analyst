@@ -98,8 +98,8 @@ def list_runs(
             "id": str(r.id),
             "agent_name": r.agent_name,
             "status": r.status,
-            "started_at": str(r.started_at),
-            "finished_at": str(r.finished_at),
+            "started_at": r.started_at.isoformat() if r.started_at else None,
+            "finished_at": r.finished_at.isoformat() if r.finished_at else None,
             "proposal_count": len(r.proposals or []),
         }
         for r in runs
@@ -122,8 +122,8 @@ def get_run(
         "id": str(run.id),
         "agent_name": run.agent_name,
         "status": run.status,
-        "started_at": str(run.started_at),
-        "finished_at": str(run.finished_at),
+        "started_at": run.started_at.isoformat() if run.started_at else None,
+        "finished_at": run.finished_at.isoformat() if run.finished_at else None,
         "log_md": run.log_md,
         "proposals": run.proposals,
     }

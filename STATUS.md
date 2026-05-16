@@ -1,7 +1,7 @@
 # Project Status
 
 **Last updated:** 2026-05-16
-**Phase:** Complete — v0.1.5 (correctness fixes from full-codebase audit)
+**Phase:** Complete — v0.1.6 (adversarial loop round 2 hardening)
 
 ## What's built
 
@@ -94,6 +94,25 @@ A second round of hardening run via the `/harden` slash command (`.claude/comman
 - **README** — false-assertion claim about DEV_MODE corrected to the actual setup instruction.
 - **`docs/wont_fix.md`** — 4 new entries added (Meta/Shiprocket cursor stalling, stale vendor API versions, Indian lakh-format regex gap, true 36-turn LLM budget vs the simplified "12-turn max" in README), and the prior duplicate Indian-format entry was consolidated into the more precise lakh-format entry. Final numbering is 1–12, sequential.
 - **Tooling** — `/harden` slash command codified in `.claude/commands/harden.md`.
+
+## v0.1.6 hardening (adversarial loop round 2)
+
+- **Seed idempotency** — `seed_demo_merchant.py` and `seed_second_merchant.py` now use `_upsert_raw()` (check-before-insert on `(merchant_id, source_record_id)`) instead of `db.merge(..., id=uuid.uuid4())`, which caused `IntegrityError` on the unique constraint on a second `make seed`.
+- **`.env.example` `API_KEYS_RAW`** — corrected from `API_KEYS` to `API_KEYS_RAW` to match the pydantic-settings field name in `app/config.py`; `ALLOWED_ORIGINS` changed to JSON array format to prevent `JSONDecodeError` at import.
+- **Makefile DB wait** — replaced `sleep 3` with a `pg_isready` poll in the `bootstrap` target so a fresh Postgres 16 image doesn't race on first boot.
+- **`requests` dependency** — added to `pyproject.toml` (was imported by `app/ui/streamlit_app.py` but absent from declared dependencies).
+- **`bench_ingest.py` sys.path shim** — added `sys.path.insert(0, ...)` matching the pattern in the other seed scripts so the script runs without `pip install -e .`.
+- **README env var + test count** — `API_KEYS` corrected to `API_KEYS_RAW`; test count updated to "186 test functions; tests requiring DATABASE_URL or OPENAI_API_KEY skip automatically" (avoids false-precision parametrized count).
+- **`wont_fix.md`** — updated with 8 new entries (13–20): `compare` synthetic provenance IDs, `rto_rate` all-time denominator, `NOW()` time-bounded README figures, products/customers without normalizers, `d2c_app` role owning tables, CI RLS running as superuser, temporal-prefix comma-number validator bypass, chat history prompt injection.
+
+## v0.1.6 additional fixes (round-2 hardening)
+
+- **shiprocket `_paginate_orders` null payload** — same `data.get("data") or {}` fix applied to `_paginate_orders` (was fixed in `_pull_shipments` in round 1 but missed sibling method).
+- **meta_to_universal defensive null** — `p.get("actions") or []` / `p.get("action_values") or []` guard against explicit `null` from Meta API.
+- **validator duplicate-ref dedup** — `seen_refs: set` prevents repeated `_try_resolve` DB calls and duplicate issues when the same cite ref appears multiple times in a response.
+- **Stale tests fixed** — `test_record_id_insight` updated to include required `campaign_id`; `test_negative_margin_emits_raise_price` updated to assert `entity_key == "order:..."` (variant-level branch removed).
+- **`wont_fix.md` #17 and #18 corrected** — #17 reworded to accurately scope the table-ownership concern to the no-`.env` case; #18 corrected to note `d2c_app` IS created in CI but tests still connect as superuser.
+- **README/STATUS test count** — corrected to 186 total; 52 DB-gated, 21 eval-gated, 113 fully offline (double-count fixed).
 
 ## Known limitations
 

@@ -103,8 +103,17 @@ class MetaAdsConnector(BaseConnector):
     @staticmethod
     def _record_id(item: dict, record_type: str) -> str:
         if record_type == "insight":
-            # insights are per-ad per-day
-            ad_id = item.get("ad_id", "unknown")
+            campaign_id = item.get("campaign_id")
+            if not campaign_id:
+                raise ValueError(f"Meta insight record missing 'campaign_id': {item}")
             date = item.get("date_start", "")
-            return f"insight:{ad_id}:{date}"
-        return f"{record_type}:{item.get('id', 'unknown')}"
+            ad_id = item.get("ad_id")
+            if ad_id:
+                # per-ad per-day — most granular, guaranteed unique
+                return f"insight:{ad_id}:{date}"
+            # campaign_id present but no ad_id: campaign-level fallback, still unique
+            adset_id = item.get("adset_id", "")
+            return f"insight:campaign:{campaign_id}:{adset_id}:{date}"
+        if "id" not in item:
+            raise ValueError(f"Meta {record_type} record missing 'id': {item}")
+        return f"{record_type}:{item['id']}"

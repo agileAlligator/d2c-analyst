@@ -4,7 +4,12 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
-from app.normalize.shopify_to_universal import _parse_dt, _upsert_entity, _upsert_event
+from app.normalize.shopify_to_universal import (
+    _get_or_create_entity,
+    _parse_dt,
+    _upsert_entity,
+    _upsert_event,
+)
 from app.provenance.record import record as prov_record
 from app.warehouse.db import set_merchant
 from app.warehouse.models import RawMetaCampaign, RawMetaInsight
@@ -56,21 +61,37 @@ def _upsert_insight(db: Session, merchant_id: str, raw: RawMetaInsight):
     if ad_id and ad_id != "unknown" and ad_id != "":
         entity_key = f"meta:ad:{ad_id}"
         entity_type = "ad_creative"
+        entity_id = _upsert_entity(db, merchant_id, entity_type, entity_key, "meta", {
+            "meta_campaign_id": campaign_id,
+            "name": p.get("campaign_name"),  # preserved so group_by="campaign" still works
+            "adset_id": adset_id,
+            "adset_name": p.get("adset_name"),
+            "ad_id": ad_id,
+            "ad_name": p.get("ad_name"),
+        })
     elif adset_id and adset_id != "":
         entity_key = f"meta:adset:{adset_id}"
         entity_type = "ad_set"
+        entity_id = _upsert_entity(db, merchant_id, entity_type, entity_key, "meta", {
+            "meta_campaign_id": campaign_id,
+            "name": p.get("campaign_name"),
+            "adset_id": adset_id,
+            "adset_name": p.get("adset_name"),
+            "ad_id": ad_id,
+            "ad_name": p.get("ad_name"),
+        })
     else:
+        # Fallback: campaign-level insight row.  DO NOT overwrite attributes on
+        # the campaign entity — normalize_campaigns() already wrote richer data
+        # (status, objective, canonical name).  Use _get_or_create_entity so we
+        # get the id for the event foreign-key without clobbering existing attrs.
         entity_key = f"meta:campaign:{campaign_id}"
         entity_type = "ad_campaign"
+        entity_id = _get_or_create_entity(db, merchant_id, entity_type, entity_key, "meta", {
+            "meta_campaign_id": campaign_id,
+            "name": p.get("campaign_name"),
+        })
 
-    entity_id = _upsert_entity(db, merchant_id, entity_type, entity_key, "meta", {
-        "meta_campaign_id": campaign_id,
-        "name": p.get("campaign_name"),  # preserved so group_by="campaign" still works
-        "adset_id": adset_id,
-        "adset_name": p.get("adset_name"),
-        "ad_id": ad_id,
-        "ad_name": p.get("ad_name"),
-    })
     prov_record(db, merchant_id, "entities", str(entity_id),
                 "raw_meta_insights", raw.source_record_id, TRANSFORM_ID)
 
@@ -78,10 +99,17 @@ def _upsert_insight(db: Session, merchant_id: str, raw: RawMetaInsight):
     occurred_at = _parse_dt(date + "T00:00:00+00:00") if date else None
 
     if occurred_at and spend > 0:
-        # Extract purchase actions for UTM attribution hints
-        actions = p.get("actions", [])
-        purchases = next((a for a in actions if a.get("action_type") == "purchase"), {})
-        purchase_value = Decimal(str(purchases.get("value", "0")))
+        # Purchase COUNT comes from actions[].value; purchase REVENUE in ₹ comes
+        # from action_values[].value.  These are two separate arrays in the Meta
+        # Insights payload — using actions for revenue is the bug this fixes.
+        actions = p.get("actions") or []
+        action_values = p.get("action_values") or []
+        purchase_count = int(
+            next((a.get("value", "0") for a in actions if a.get("action_type") == "purchase"), "0")
+        )
+        purchase_value = Decimal(str(
+            next((a.get("value", "0") for a in action_values if a.get("action_type") == "purchase"), "0")
+        ))
 
         event_id = _upsert_event(db, merchant_id, entity_id, "ad_spend", occurred_at,
                                   spend, "INR", None, {
@@ -90,6 +118,7 @@ def _upsert_insight(db: Session, merchant_id: str, raw: RawMetaInsight):
                                       "cpc": p.get("cpc"),
                                       "cpm": p.get("cpm"),
                                       "ctr": p.get("ctr"),
+                                      "purchase_count": purchase_count,
                                       "purchase_value": str(purchase_value),
                                       "ad_id": ad_id,
                                       "adset_id": p.get("adset_id"),

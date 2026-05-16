@@ -130,7 +130,15 @@ class TestShopifyNormalizer:
                 text("SELECT COUNT(*) FROM events WHERE merchant_id=:m AND event_type='refund'"),
                 {"m": MERCHANT},
             ).scalar()
-        assert n > 0, "No refund events — seed data may have no refunds"
+            assert n > 0, "No refund events — seed data may have no refunds"
+            # Refund events must carry negative amounts — a positive refund amount is a normalizer bug.
+            positive_count = db.execute(
+                text("SELECT COUNT(*) FROM events WHERE merchant_id=:m AND event_type='refund' AND amount >= 0"),
+                {"m": MERCHANT},
+            ).scalar()
+            assert positive_count == 0, (
+                f"{positive_count} refund event(s) have non-negative amount — refunds must be recorded as negative"
+            )
 
 
 # ---------------------------------------------------------------------------

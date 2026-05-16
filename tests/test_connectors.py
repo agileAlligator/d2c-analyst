@@ -50,9 +50,16 @@ class TestShopifyConnector:
 class TestMetaAdsConnector:
     def test_record_id_insight(self):
         from app.connectors.meta_ads.connector import MetaAdsConnector
-        item = {"ad_id": "123", "date_start": "2024-01-01"}
+        item = {"campaign_id": "camp_001", "ad_id": "123", "date_start": "2024-01-01"}
         rid = MetaAdsConnector._record_id(item, "insight")
         assert rid == "insight:123:2024-01-01"
+
+    def test_record_id_insight_missing_campaign_raises(self):
+        from app.connectors.meta_ads.connector import MetaAdsConnector
+        import pytest
+        item = {"ad_id": "123", "date_start": "2024-01-01"}
+        with pytest.raises(ValueError, match="campaign_id"):
+            MetaAdsConnector._record_id(item, "insight")
 
     def test_record_id_campaign(self):
         from app.connectors.meta_ads.connector import MetaAdsConnector

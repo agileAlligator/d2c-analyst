@@ -5,7 +5,6 @@ Each question has:
 - description: what we're testing
 - expected_cites: True if every number must have a <cite> tag
 - answer_checks: callables that verify answer content (accuracy assertions)
-- expected_metrics: metric names expected to appear in tool calls
 
 Ground truth from seeded demo merchant (BASE_DATE=2026-05-13):
   revenue 30d:  ₹31,814     revenue 7d:  ₹6,795
@@ -24,7 +23,6 @@ from dataclasses import dataclass, field
 class GoldenQuestion:
     question: str
     description: str
-    expected_metrics: list[str] = field(default_factory=list)
     expected_cites: bool = True
     answer_checks: list[Callable[[str], bool]] = field(default_factory=list)
 
@@ -52,7 +50,7 @@ GOLDEN_QUESTIONS: list[GoldenQuestion] = [
     GoldenQuestion(
         question="What was total revenue in the last 30 days?",
         description="Basic revenue query — answer must contain ~₹31,814",
-        expected_metrics=["revenue"],
+
         answer_checks=[
             # ₹31,814 ± 40% — wide range because rolling window slides daily from BASE_DATE
             _number_in_range(19_000, 45_000),
@@ -62,7 +60,7 @@ GOLDEN_QUESTIONS: list[GoldenQuestion] = [
     GoldenQuestion(
         question="What was total revenue in the last 7 days?",
         description="Short-window revenue — answer must contain ~₹6,795",
-        expected_metrics=["revenue"],
+
         answer_checks=[
             # ₹6,795 ± 40% — rolling window slides daily from BASE_DATE
             _number_in_range(4_000, 10_000),
@@ -73,7 +71,7 @@ GOLDEN_QUESTIONS: list[GoldenQuestion] = [
     GoldenQuestion(
         question="How much did we spend on Meta Ads in the last 30 days?",
         description="Ad spend query — must cite raw_meta_insights, ₹28,365.69",
-        expected_metrics=["ad_spend"],
+
         answer_checks=[
             # ₹28,365.69 ± 40% — rolling window slides daily from BASE_DATE
             _number_in_range(17_000, 40_000),
@@ -82,7 +80,7 @@ GOLDEN_QUESTIONS: list[GoldenQuestion] = [
     GoldenQuestion(
         question="How much did we spend on Meta Ads in the last 14 days?",
         description="14d ad spend — partial window, ₹12,025.71",
-        expected_metrics=["ad_spend"],
+
         answer_checks=[
             # ₹12,025.71 ± 40% — rolling window slides daily from BASE_DATE
             _number_in_range(7_200, 17_000),
@@ -92,7 +90,7 @@ GOLDEN_QUESTIONS: list[GoldenQuestion] = [
     GoldenQuestion(
         question="Which Meta campaign spent the most in the last 30 days?",
         description="Ad spend grouped by campaign — must name a campaign",
-        expected_metrics=["ad_spend"],
+
         answer_checks=[
             _mentions_any("New Year", "Diwali", "Brand Awareness", "Brand", "campaign"),
         ],
@@ -102,7 +100,7 @@ GOLDEN_QUESTIONS: list[GoldenQuestion] = [
     GoldenQuestion(
         question="What is our RTO rate by courier in the last 30 days?",
         description="RTO grouped by courier — must cite shipments, list all couriers",
-        expected_metrics=["rto_rate"],
+
         answer_checks=[
             _mentions_any("BlueDart", "Delhivery", "Xpressbees", "Shadowfax"),
             _has_number(r"\d+\.?\d*\s*%"),
@@ -111,7 +109,7 @@ GOLDEN_QUESTIONS: list[GoldenQuestion] = [
     GoldenQuestion(
         question="Which courier has the highest RTO rate?",
         description="Courier ranking — Shadowfax has ~47.8% RTO rate (highest)",
-        expected_metrics=["rto_rate"],
+
         answer_checks=[
             _mentions_any("Shadowfax"),
             _number_in_range(40, 55),  # ~47.8% RTO rate
@@ -122,7 +120,7 @@ GOLDEN_QUESTIONS: list[GoldenQuestion] = [
     GoldenQuestion(
         question="What is my contribution margin per order this week?",
         description="CM per order 7d — must cite Shopify+Shiprocket join, 5 orders",
-        expected_metrics=["contribution_margin"],
+
         answer_checks=[
             _mentions_any("contribution margin", "margin"),
             _mentions_any("1063", "1075", "1055", "1004", "1031"),  # order numbers
@@ -131,7 +129,7 @@ GOLDEN_QUESTIONS: list[GoldenQuestion] = [
     GoldenQuestion(
         question="Which orders had negative contribution margin in the last 7 days?",
         description="Negative CM — order 1063 has ₹-8.03 margin",
-        expected_metrics=["contribution_margin"],
+
         answer_checks=[
             _mentions_any("1063"),
             _mentions_any("-8", "−8", "₹-8", "-₹8", "negative margin"),
@@ -140,7 +138,7 @@ GOLDEN_QUESTIONS: list[GoldenQuestion] = [
     GoldenQuestion(
         question="Which orders had negative contribution margin last month?",
         description="Negative CM last month — tests Shopify↔Shiprocket join",
-        expected_metrics=["contribution_margin"],
+
         answer_checks=[
             _mentions_any("negative", "margin"),
             lambda a: bool(__import__('re').search(r"-\s*₹?\s*\d+|\d+\s*order", a, __import__('re').IGNORECASE)),
@@ -151,7 +149,7 @@ GOLDEN_QUESTIONS: list[GoldenQuestion] = [
     GoldenQuestion(
         question="What is our CAC in the last 30 days?",
         description="CAC = total spend / total orders",
-        expected_metrics=["cac"],
+
         answer_checks=[
             _mentions_any("CAC", "acquisition", "customer"),
             _has_number(r"\d{3,}"),
@@ -160,7 +158,7 @@ GOLDEN_QUESTIONS: list[GoldenQuestion] = [
     GoldenQuestion(
         question="What was our total ad spend vs total revenue in the last 14 days? What is the ROAS?",
         description="ROAS — both spend and revenue must be cited",
-        expected_metrics=["ad_spend", "revenue"],
+
         answer_checks=[
             _mentions_any("ROAS", "roas", "return"),
             _has_number(r"0\.\d+|[12]\.\d+"),  # ROAS will be < 2 (spend >> revenue)
@@ -171,7 +169,7 @@ GOLDEN_QUESTIONS: list[GoldenQuestion] = [
     GoldenQuestion(
         question="Compare revenue between the last 7 days and the last 30 days.",
         description="Period comparison — tests compare tool, both periods cited",
-        expected_metrics=["revenue"],
+
         answer_checks=[
             # ₹6,795 (7d) and ₹31,814 (30d) ± 40% — rolling window slides daily from BASE_DATE
             _number_in_range(4_000, 10_000),    # 7d value ~₹6,795
@@ -183,7 +181,7 @@ GOLDEN_QUESTIONS: list[GoldenQuestion] = [
     GoldenQuestion(
         question="What is our average order value in the last 30 days?",
         description="AOV — revenue ÷ order count",
-        expected_metrics=["revenue"],
+
         answer_checks=[
             _mentions_any("average", "AOV", "order value"),
             _has_number(r"\d{3,}"),
@@ -194,7 +192,7 @@ GOLDEN_QUESTIONS: list[GoldenQuestion] = [
     GoldenQuestion(
         question="Show me the top 5 orders by revenue in the last 30 days.",
         description="SQL tool fallback — metric catalog isn't enough for ORDER BY",
-        expected_metrics=["revenue"],
+
         answer_checks=[
             _has_number(r"\d{3,}"),
         ],
@@ -204,7 +202,7 @@ GOLDEN_QUESTIONS: list[GoldenQuestion] = [
     GoldenQuestion(
         question="How many orders do we have in total?",
         description="Entity count — demo has 80 orders, used for isolation check",
-        expected_metrics=[],
+
         answer_checks=[
             _has_number(r"\d+"),
         ],
@@ -214,7 +212,7 @@ GOLDEN_QUESTIONS: list[GoldenQuestion] = [
     GoldenQuestion(
         question="What was the average delivery time in days from order to delivery last month?",
         description="ADVERSARIAL: no delivery timestamps in schema — must say no data, not hallucinate",
-        expected_metrics=[],
+
         expected_cites=False,
         answer_checks=[
             # System should admit it lacks delivery-time data, not invent a duration
@@ -231,7 +229,7 @@ GOLDEN_QUESTIONS: list[GoldenQuestion] = [
             "ADVERSARIAL: computed ratio (revenue ÷ clicks) — no native provenance anchor;"
             " tests cite-or-refuse behavior"
         ),
-        expected_metrics=["revenue", "ad_spend"],
+
         answer_checks=[
             # Model must either cite a computed value OR refuse — not state a bare number
             # Passing means the answer contains a cited number or an explicit caveat
@@ -244,7 +242,7 @@ GOLDEN_QUESTIONS: list[GoldenQuestion] = [
             " change between last week and the week before?"
         ),
         description="ADVERSARIAL: multi-step derived metric with two time windows — tests chained computation citation",
-        expected_metrics=[],
+
         answer_checks=[
             _mentions_any("impression", "conversion", "rate", "click"),
         ],

@@ -53,8 +53,8 @@ class ShiprocketConnector(BaseConnector):
             params["page"] = page
             resp = self._get(f"{BASE}/orders", params=params)
             data = resp.json()
-            orders = data.get("data", {})
-            items = orders if isinstance(orders, list) else orders.get("data", [])
+            raw = data.get("data") or {}
+            items = raw if isinstance(raw, list) else raw.get("data", [])
             if not items:
                 break
             logger.debug("Shiprocket orders page %d: %d records", page, len(items))
@@ -78,7 +78,7 @@ class ShiprocketConnector(BaseConnector):
             params["page"] = page
             resp = self._get(f"{BASE}/shipments", params=params)
             data = resp.json()
-            items = data.get("data", [])
+            items = data.get("data") or []
             if not items:
                 break
             logger.debug("Shiprocket shipments page %d: %d records", page, len(items))

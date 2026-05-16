@@ -60,53 +60,23 @@ class MarginWatchAgent(BaseAgent):
                 rto = Decimal(str(item["row"].get("rto_cost") or 0))
 
                 impact = abs(float(margin))
-                rev_f = float(revenue)
-                row = item["row"]
-
-                # Derive variant_id and per-unit price from line_items when available.
-                # Shopify line_items is a list; we pick the item with the highest price
-                # (the "primary" line item) to target the price adjustment.
-                line_items = row.get("line_items") or []
-                variant_id = None
-                unit_price = revenue  # fallback: treat whole order as qty-1
-                quantity = Decimal("1")
-                if line_items:
-                    primary = max(line_items, key=lambda li: float(li.get("price") or 0))
-                    variant_id = primary.get("variant_id")
-                    unit_price = Decimal(str(primary.get("price") or revenue))
-                    quantity = Decimal(str(primary.get("quantity") or 1))
-                    if quantity <= 0:
-                        quantity = Decimal("1")
-
-                # Per-unit price increase to cover the full margin gap.
-                # new_unit_price = unit_price + (|margin| / quantity)
-                per_unit_increase = abs(margin) / quantity
-                new_unit_price = unit_price + per_unit_increase
-
-                # entity_key targets the product variant, not the order.
-                if variant_id:
-                    entity_key = f"sku:{variant_id}"
-                else:
-                    # Fallback: we don't have a variant ID, flag the order instead.
-                    entity_key = f"order:{item['order_id']}"
+                order_id = item["order_id"]
 
                 self.emit_proposal(Proposal(
                     action_type="raise_price",
-                    entity_key=entity_key,
+                    entity_key=f"order:{order_id}",
                     expected_inr_impact=impact,
                     reasoning=(
-                        f"Order {item['order_id']} has contribution margin of "
+                        f"Order {order_id} has contribution margin of "
                         f"₹{margin:,.2f} (revenue ₹{revenue:,.2f}, "
                         f"shipping ₹{shipping:,.2f}, RTO cost ₹{rto:,.2f}). "
-                        f"Raising the variant price from ₹{unit_price:,.2f} to "
-                        f"₹{new_unit_price:,.2f} (+₹{per_unit_increase:,.2f}/unit × "
-                        f"{quantity} units) would move this order to breakeven."
+                        f"Raising the price by ₹{abs(margin):,.2f} would move this order to breakeven."
                     ),
                     provenance_ids=item["prov_ids"][:5],
                     would_do_api_call={
                         "connector": "shopify",
-                        "endpoint": "PUT /admin/api/2024-01/variants/{variant_id}.json",
-                        "body": {"variant": {"price": str(new_unit_price)}},
+                        "endpoint": f"PUT /admin/api/2024-01/orders/{order_id}.json",
+                        "note": f"Raise price by ₹{abs(margin):.2f} to reach breakeven — exact variant must be determined from order line items",
                         "NOT_SENT": True,
                     },
                 ))

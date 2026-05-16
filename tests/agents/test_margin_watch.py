@@ -164,11 +164,10 @@ class TestRaisePriceProposal:
         raise_price_proposals = [p for p in agent._proposals if p.action_type == "raise_price"]
         assert len(raise_price_proposals) == 1
         p = raise_price_proposals[0]
-        assert p.entity_key == "sku:v999"
+        # agent always uses order-level entity key (variant-level branch was removed)
+        assert p.entity_key.startswith("order:")
+        assert p.entity_key == "order:1063"
         assert p.expected_inr_impact == pytest.approx(8.03, rel=1e-3)
-        # new price = 500.00 + 8.03/1 = 508.03
-        new_price = float(p.would_do_api_call["body"]["variant"]["price"])
-        assert new_price == pytest.approx(508.03, rel=1e-3)
         assert p.would_do_api_call["NOT_SENT"] is True
 
     def test_negative_revenue_row_skipped(self):

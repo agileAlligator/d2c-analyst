@@ -20,6 +20,7 @@ dependencies = [
     "tenacity>=8.3.0",
     "python-dotenv>=1.0.0",
     "streamlit>=1.36.0",
+    "requests>=2.32.0",
     "sqlalchemy>=2.0.0",
     "rq>=1.16.0",
 ]

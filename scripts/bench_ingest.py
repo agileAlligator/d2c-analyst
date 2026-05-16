@@ -4,6 +4,11 @@ Usage:  python scripts/bench_ingest.py [--merchants N] [--orders-per-merchant M]
 Default: 10 merchants × 20 orders = 200 rows.
 Output:  JSON line: {"rows": N, "elapsed_seconds": X, "rows_per_second": Y}
 """
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 import argparse
 import json
 import time

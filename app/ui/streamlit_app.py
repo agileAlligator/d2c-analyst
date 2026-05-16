@@ -4,6 +4,7 @@ import re
 
 import requests
 import streamlit as st
+from app.config import settings
 
 
 def _clean_answer(text: str) -> str:
@@ -17,6 +18,14 @@ st.title("D2C Analyst")
 st.caption("Ask anything about your Shopify, Meta Ads, and Shiprocket data.")
 
 merchant_id = st.sidebar.text_input("Merchant ID", value="demo")
+
+_api_key = settings.api_keys_raw.split(":")[0] if settings.api_keys_raw else None
+if _api_key:
+    st.sidebar.caption("Merchant is determined by your API key")
+else:
+    st.sidebar.caption("Demo merchant (DEV_MODE)")
+
+_request_headers = {"X-API-Key": _api_key} if _api_key else {}
 
 SUGGESTED_QUESTIONS = [
     "What was total revenue in the last 30 days?",
@@ -87,6 +96,7 @@ if question:
                         "merchant_id": merchant_id,
                         "history": st.session_state.history,
                     },
+                    headers=_request_headers,
                     timeout=60,
                 )
                 resp.raise_for_status()
@@ -139,7 +149,7 @@ st.sidebar.markdown("---")
 st.sidebar.subheader("Agent Runs")
 if st.sidebar.button("Refresh runs"):
     try:
-        runs_resp = requests.get(f"{API_URL}/runs?merchant_id={merchant_id}", timeout=10)
+        runs_resp = requests.get(f"{API_URL}/runs?merchant_id={merchant_id}", headers=_request_headers, timeout=10)
         for run in runs_resp.json():
             icon = "✅" if run["status"] == "completed" else "❌" if run["status"] == "failed" else "⏳"
             label = f"{icon} {run['agent_name']} — {run['proposal_count']} proposals"

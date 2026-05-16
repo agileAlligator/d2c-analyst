@@ -432,6 +432,6 @@ def query_metric(
         ids = row.get("provenance_ids") or []
         ids = [v for v in ids if v is not None]
         row["provenance_ids"] = sorted({str(v) for v in ids})
-        prov_ids.extend(ids)
+        prov_ids.extend(str(v) for v in ids)
 
     return MetricResult(rows=rows, provenance_ids=list(set(prov_ids)), sql_used=sql.strip())

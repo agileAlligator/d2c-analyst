@@ -189,21 +189,25 @@ Blended ROAS (14d): 1.45x (spend ₹12,026)
 **Expected impact:** ₹1,650
 **Reasoning:** Courier 'Shadowfax' has an RTO rate of 47.8% (11 returns in 30 days). Switching to 'BlueDart' (RTO rate 31.2%) could save ~₹1,650/month.
 **Provenance:** shipment:8024, shipment:8028, shipment:8026, shipment:8067, shipment:8020
-**Would-do API call:** {'connector': 'shiprocket', 'action': 'update_courier_preference', 'body': {'preferred_courier': 'BlueDart'}, 'NOT_SENT': True}
+**Would-do API call:** `{'connector': 'shiprocket', 'action': 'update_courier_preference', 'body': {'preferred_courier': 'BlueDart'}, 'NOT_SENT': True}`
 
 ### 2. pause_adset — meta:all_campaigns
 **Expected impact:** ₹3,608
 **Reasoning:** Blended ROAS is 1.45x over the last 14 days (₹12,026 spend, ₹17,485 attributed revenue). Pausing the bottom 30% of campaigns by spend could save ~₹3,608 while preserving higher-ROAS campaigns.
 **Provenance:** insight:camp_003:2026-05-05, insight:camp_001:2026-05-11, insight:camp_001:2026-05-05, insight:camp_001:2026-05-04, insight:camp_001:2026-05-12
-**Would-do API call:** {'connector': 'meta_ads', 'endpoint': 'POST /{ad-set-id}', 'body': {'status': 'PAUSED'}, 'NOT_SENT': True}
+**Would-do API call:** `{'connector': 'meta_ads', 'endpoint': 'POST /{ad-set-id}', 'body': {'status': 'PAUSED'}, 'NOT_SENT': True}`
 
 ### 3. raise_price — order:1027
 **Expected impact:** ₹44
-**Reasoning:** Order 1027 has contribution margin of ₹-43.70 (revenue ₹199.00, shipping ₹151.64, RTO cost ₹91.06). Raising the variant price from ₹199.00 to ₹242.70 (+₹43.70/unit × 1 units) would move this order to breakeven.
+**Reasoning:** Order 1027 has contribution margin of ₹-43.70 (revenue ₹199.00, shipping ₹151.64, RTO cost ₹91.06). Raising the price by ₹43.70 would move this order to breakeven.
+**Provenance:** order:1027
+**Would-do API call:** `{'connector': 'shopify', 'endpoint': 'PUT /admin/api/2024-01/orders/1027.json', 'note': 'Raise price by ₹43.70 to reach breakeven — exact variant must be determined from order line items', 'NOT_SENT': True}`
 
 ### 4. raise_price — order:1063
 **Expected impact:** ₹8
-**Reasoning:** Order 1063 has contribution margin of ₹-8.03 (revenue ₹199.00, shipping ₹101.13, RTO cost ₹105.90). Raising the variant price from ₹199.00 to ₹207.03 (+₹8.03/unit × 1 units) would move this order to breakeven.
+**Reasoning:** Order 1063 has contribution margin of ₹-8.03 (revenue ₹199.00, shipping ₹101.13, RTO cost ₹105.90). Raising the price by ₹8.03 would move this order to breakeven.
+**Provenance:** order:1063
+**Would-do API call:** `{'connector': 'shopify', 'endpoint': 'PUT /admin/api/2024-01/orders/1063.json', 'note': 'Raise price by ₹8.03 to reach breakeven — exact variant must be determined from order line items', 'NOT_SENT': True}`
 ```
 
 ---
@@ -315,10 +319,10 @@ make bootstrap         # start db, install, seed demo+demo2, start api+ui
 
 make agent             # run Margin Watch once, prints proposals with ₹ impact
 make eval              # citation + accuracy suite (needs LLM key)
-pytest -q              # 144 tests pass offline (64 DB-gated, skipped without DATABASE_URL); 205 pass with live DB
+pytest -q              # 186 test functions; tests requiring DATABASE_URL or OPENAI_API_KEY skip automatically when those are unset
 ```
 
-For production use, set `API_KEYS=your-secret-key:demo` in `.env` and pass `X-API-Key: your-secret-key` in API requests. `DEV_MODE=true` disables key enforcement for local development.
+For production use, set `API_KEYS_RAW=your-secret-key:demo` in `.env` and pass `X-API-Key: your-secret-key` in API requests. `DEV_MODE=true` disables key enforcement for local development.
 
 Ports: api `:10001`, ui `:10002`, db `:5434`
 

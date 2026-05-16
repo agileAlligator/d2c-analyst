@@ -30,21 +30,6 @@ def record(
     db.execute(stmt)
 
 
-def get_provenance(db: Session, row_table: str, row_pk: str) -> list[dict]:
-    from sqlalchemy import text
-    rows = db.execute(
-        text("""
-            SELECT p.raw_table, p.raw_record_id, p.transform_id, p.ingested_at
-            FROM provenance p
-            WHERE p.row_table = :tbl AND p.row_pk = :pk
-        """),
-        {"tbl": row_table, "pk": row_pk},
-    ).fetchall()
-    return [
-        {"raw_table": r[0], "raw_record_id": r[1], "transform_id": r[2], "ingested_at": str(r[3])}
-        for r in rows
-    ]
-
 
 _ALLOWED_RAW_TABLES = {
     "raw_shopify_orders", "raw_shopify_products", "raw_shopify_refunds",

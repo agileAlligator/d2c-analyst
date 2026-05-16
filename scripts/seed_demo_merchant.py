@@ -64,6 +64,20 @@ def seed():
     print(f"Demo merchant '{MERCHANT_ID}' seeded successfully.")
 
 
+def _upsert_raw(db, model_class, merchant_id: str, source_record_id: str, **kwargs):
+    """Insert a raw record only if (merchant_id, source_record_id) does not already exist."""
+    existing = db.query(model_class).filter_by(
+        merchant_id=merchant_id, source_record_id=source_record_id
+    ).first()
+    if existing is None:
+        db.add(model_class(
+            id=uuid.uuid4(),
+            merchant_id=merchant_id,
+            source_record_id=source_record_id,
+            **kwargs,
+        ))
+
+
 def _seed_products(db):
     for sku, name, price in SKUS:
         product = {
@@ -72,14 +86,8 @@ def _seed_products(db):
             "variants": [{"id": abs(hash(sku + "v")) % 10**10, "sku": sku, "price": str(price)}],
             "updated_at": datetime.now(UTC).isoformat(),
         }
-        db.merge(RawShopifyProduct(
-            id=uuid.uuid4(),
-            merchant_id=MERCHANT_ID,
-            source_record_id=f"product:{product['id']}",
-            payload=product,
-            fetched_at=datetime.now(UTC),
-            run_id="seed",
-        ))
+        _upsert_raw(db, RawShopifyProduct, MERCHANT_ID, f"product:{product['id']}",
+                    payload=product, fetched_at=datetime.now(UTC), run_id="seed")
 
 
 def _seed_orders(db) -> list[int]:
@@ -114,14 +122,8 @@ def _seed_orders(db) -> list[int]:
             }],
             "total_shipping_price_set": {"shop_money": {"amount": "0", "currency_code": "INR"}},
         }
-        db.merge(RawShopifyOrder(
-            id=uuid.uuid4(),
-            merchant_id=MERCHANT_ID,
-            source_record_id=f"order:{order_id}",
-            payload=order,
-            fetched_at=datetime.now(UTC),
-            run_id="seed",
-        ))
+        _upsert_raw(db, RawShopifyOrder, MERCHANT_ID, f"order:{order_id}",
+                    payload=order, fetched_at=datetime.now(UTC), run_id="seed")
         order_ids.append((order_id, order_number, total, created_at, sku))
     return order_ids
 
@@ -139,27 +141,15 @@ def _seed_refunds(db, order_ids):
             "transactions": [{"kind": "refund", "amount": str(total)}],
             "refund_line_items": [{"line_item": {"sku": sku, "quantity": 1}}],
         }
-        db.merge(RawShopifyRefund(
-            id=uuid.uuid4(),
-            merchant_id=MERCHANT_ID,
-            source_record_id=f"refund:{refund_id}",
-            payload=refund,
-            fetched_at=datetime.now(UTC),
-            run_id="seed",
-        ))
+        _upsert_raw(db, RawShopifyRefund, MERCHANT_ID, f"refund:{refund_id}",
+                    payload=refund, fetched_at=datetime.now(UTC), run_id="seed")
 
 
 def _seed_meta(db):
     for camp_id, camp_name in CAMPAIGNS:
         campaign = {"id": camp_id, "name": camp_name, "status": "ACTIVE", "objective": "CONVERSIONS"}
-        db.merge(RawMetaCampaign(
-            id=uuid.uuid4(),
-            merchant_id=MERCHANT_ID,
-            source_record_id=f"campaign:{camp_id}",
-            payload=campaign,
-            fetched_at=datetime.now(UTC),
-            run_id="seed",
-        ))
+        _upsert_raw(db, RawMetaCampaign, MERCHANT_ID, f"campaign:{camp_id}",
+                    payload=campaign, fetched_at=datetime.now(UTC), run_id="seed")
 
     # Daily insights for each campaign for last 30 days
     for days_ago in range(30):
@@ -187,14 +177,8 @@ def _seed_meta(db):
                 "date_start": date,
                 "date_stop": date,
             }
-            db.merge(RawMetaInsight(
-                id=uuid.uuid4(),
-                merchant_id=MERCHANT_ID,
-                source_record_id=f"insight:{camp_id}:{date}",
-                payload=insight,
-                fetched_at=datetime.now(UTC),
-                run_id="seed",
-            ))
+            _upsert_raw(db, RawMetaInsight, MERCHANT_ID, f"insight:{camp_id}:{date}",
+                        payload=insight, fetched_at=datetime.now(UTC), run_id="seed")
 
 
 def _seed_shiprocket(db, order_ids):
@@ -221,14 +205,8 @@ def _seed_shiprocket(db, order_ids):
             "updated_at": (created_at + timedelta(days=RNG.randint(1, 7))).isoformat(),
             "rto_initiated_date": (created_at + timedelta(days=5)).isoformat() if "RTO" in status else None,
         }
-        db.merge(RawShiprocketShipment(
-            id=uuid.uuid4(),
-            merchant_id=MERCHANT_ID,
-            source_record_id=f"shipment:{shipment['id']}",
-            payload=shipment,
-            fetched_at=datetime.now(UTC),
-            run_id="seed",
-        ))
+        _upsert_raw(db, RawShiprocketShipment, MERCHANT_ID, f"shipment:{shipment['id']}",
+                    payload=shipment, fetched_at=datetime.now(UTC), run_id="seed")
 
 
 if __name__ == "__main__":

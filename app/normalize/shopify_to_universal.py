@@ -44,12 +44,16 @@ def _upsert_order(db: Session, merchant_id: str, raw: RawShopifyOrder):
     prov_record(db, merchant_id, "entities", str(entity_id),
                 "raw_shopify_orders", raw.source_record_id, TRANSFORM_ID)
 
-    # Revenue event — use subtotal_price (goods revenue only), fall back to total_price
-    subtotal = Decimal(str(p.get("subtotal_price") or p.get("total_price") or "0"))
+    # Revenue event — use subtotal_price (goods revenue only), fall back to total_price.
+    # Compare Decimal values so "0.00" (shipping-only / gift-card orders) falls through
+    # to total_price rather than being accepted as a truthy non-empty string.
+    subtotal = Decimal(str(p.get("subtotal_price") or "0"))
+    total = Decimal(str(p.get("total_price") or "0"))
+    amount = subtotal if subtotal > 0 else total
     occurred_at = _parse_dt(p.get("created_at"))
-    if occurred_at and subtotal > 0:
+    if occurred_at and amount > 0:
         event_id = _upsert_event(db, merchant_id, entity_id, "order_revenue", occurred_at,
-                                  subtotal, p.get("currency", "INR"), None, {
+                                  amount, p.get("currency", "INR"), None, {
                                       "subtotal": str(p.get("subtotal_price", "0")),
                                       "shipping": str(p.get("total_shipping_price_set", {})
                                                        .get("shop_money", {}).get("amount", "0")),
@@ -140,6 +144,38 @@ def _upsert_entity(db: Session, merchant_id: str, entity_type: str,
     ).returning(Entity.__table__.c.entity_id)
     result = db.execute(stmt)
     return result.scalar()
+
+
+def _get_or_create_entity(db: Session, merchant_id: str, entity_type: str,
+                          natural_key: str, source: str, attributes: dict) -> uuid.UUID:
+    """Insert the entity only if it does not already exist.
+
+    Unlike _upsert_entity, this never overwrites attributes on conflict —
+    safe to call from insight normalizers that must not clobber the richer
+    attributes written by dedicated campaign/adset normalizers.
+    """
+    now = datetime.now(UTC)
+    new_id = uuid.uuid4()
+    stmt = pg_insert(Entity.__table__).values(
+        entity_id=new_id,
+        merchant_id=merchant_id,
+        entity_type=entity_type,
+        natural_key=natural_key,
+        source=source,
+        attributes=attributes,
+        first_seen=now,
+        last_seen=now,
+    ).on_conflict_do_nothing(
+        constraint="uq_entity_natural_key",
+    )
+    db.execute(stmt)
+    # Whether we inserted or hit the conflict, fetch the authoritative id.
+    row = (
+        db.query(Entity.entity_id)
+        .filter_by(merchant_id=merchant_id, natural_key=natural_key)
+        .one()
+    )
+    return row.entity_id
 
 
 def _upsert_event(db: Session, merchant_id: str, entity_id: uuid.UUID,

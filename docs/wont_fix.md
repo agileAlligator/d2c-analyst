@@ -141,3 +141,35 @@ Impact: low for v0 (single merchant, clean data). At 10k merchants with fuzzy id
 **Root cause**: README simplifies "12-turn max" without qualifying that it is per-attempt.
 
 **Why not fixed**: The per-attempt framing is accurate for the common case and is the operationally meaningful limit (each attempt resets context). The aggregate ceiling is documented here. README wording is intentionally simplified for readability.
+
+## 13. `compare` tool synthetic provenance IDs not resolvable by `get_raw`
+
+The `compare(metric, period_a, period_b)` tool generates synthetic IDs like `computed:metric:delta:AvsB` and `computed:metric:pct_change:AvsB`. These appear in `provenance_ids` and are accepted by the validator, but `get_raw(provenance_id)` cannot resolve them (no raw row exists). The "answer → citation → original JSON" round-trip breaks for delta/percent-change values. Fix: a `compute()` tool that generates a `computed:` provenance record stored in the warehouse and resolvable by `get_raw`. Scope: v0.2 (requires new provenance table row type).
+
+## 14. `rto_rate` metric denominator is all-time, not time-windowed
+
+`query_metric(rto_rate, time_range="30d")` returns `RTOs(last 30d) / shipments(all time)`. The denominator counts all shipments ever ingested regardless of the query time window, because filtering shipment entities by first-seen would exclude shipments that had RTOs within the window but were first seen earlier. A "30d RTO rate" computed this way understates the true rate for growing merchants. Fix: add a time-windowed denominator option, or recalculate denominator as "shipments whose delivery window overlaps the query period." Scope: requires rethinking the shipment lifecycle model (v0.2).
+
+## 15. Wall-clock `NOW()` makes README ₹ figures time-bounded
+
+Metric queries use `NOW() - INTERVAL '...'` while seed data is anchored to BASE_DATE=2026-05-13. README figures (₹31,814 30d revenue, ROAS 1.45x, ₹5,310/month) are accurate only while the rolling window intersects the seeded date range. Past roughly 2026-07-13, the 30d window returns zero seed orders. Fix: a configurable `AS_OF_DATE` parameter in metric queries, or advance BASE_DATE before each submission demo. Scope: v0.2.
+
+## 16. `raw_shopify_products` and `raw_shopify_customers` have no downstream normalizer
+
+The Shopify connector ingests products and customers into `raw_shopify_products` and `raw_shopify_customers`, but no normalizer processes them into `entities`/`events`. The ingestion cost is paid with no analytical benefit. Fix: add normalizers that create product entities (for SKU-level margin) and customer entities (for cohort analysis). Scope: v0.2 (requires new metric catalog entries and identity resolution).
+
+## 17. `d2c_app` may own its tables when running without `.env`
+
+`create_tables()` uses `app/warehouse/db.py:engine`, which is built from `settings.database_url`. The default value of `database_url` in `app/config.py` is `postgresql://d2c_app:d2c_app@localhost:5432/d2c` (the runtime role). If a developer runs without a `.env` file (so no `DATABASE_URL` env var is set), `create_tables()` connects as `d2c_app` and `d2c_app` becomes the table owner. Table owners can ALTER/DROP their own RLS policies even under `NOSUPERUSER NOBYPASSRLS`. Under the documented bootstrap flow (`.env.example` sets `DATABASE_URL=postgresql://d2c:d2c@...`) and in CI, `DATABASE_URL` points to the `d2c` superuser, so tables are created as `d2c` and the ownership concern does not apply. Fix: pass an explicit engine to `create_tables()` rather than using the module-level `engine` singleton so the migration always runs as a designated superuser regardless of env. Scope: migration refactor.
+
+## 18. CI RLS tests run under superuser, not `d2c_app` role
+
+GitHub Actions sets `DATABASE_URL=postgresql://d2c:d2c@...` (superuser). The `d2c_app` role is created by `create_app_role()` called from `seed_demo_merchant.py` (which `make seed` invokes), so the role does exist in CI. However, all test sessions connect via the superuser `DATABASE_URL`, not as `d2c_app`. Merchant-isolation tests pass because metric catalog SQL includes explicit `merchant_id` filters, but they do NOT verify that the RLS policy itself would block a query that omits the filter. A regression removing `set_merchant()` would pass CI but break production. Fix: run isolation tests connecting as `d2c_app`. Scope: CI infrastructure change.
+
+## 19. `"last N,NNN"` temporal prefix exempts comma-formatted numbers from bare-number scan
+
+The bare-number validator excludes numbers whose start position falls within a `r'\b(?:last|past|…|next)\s+\d+\b'` span. This span covers the first number group of a comma-formatted number (e.g., "last 30,000" → "30,000" starts inside the "last 30" span and is not stripped). A model response like "the last 30,000 orders showed no RTO" would pass the validator with "30,000" uncited. Fix: extend the temporal regex to also cover comma-formatted numbers (`\s+\d{1,3}(?:,\d{3})*`), or change the exclusion logic to only protect the matching span text, not the whole comma-formatted token. Scope: validator regex refactor.
+
+## 20. `history` field enables prompt-injection via the chat API
+
+`/chat` accepts a `history: list[dict]` field that is spliced directly after the system prompt with no role or content validation. A caller can inject `{"role": "system", ...}` entries to override instructions, or `{"role": "tool", ...}` entries to fabricate tool results with arbitrary provenance IDs. The validator's provenance check only covers IDs collected from actual `dispatch_tool` calls in the current attempt, so injected tool messages with real-looking IDs can survive the check if their content doesn't trigger bare-number detection. Fix: filter history to only `user`/`assistant` roles; validate tool messages against known tool names and schemas. Scope: security hardening in v0.2.

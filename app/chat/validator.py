@@ -8,7 +8,7 @@ import re
 
 from sqlalchemy.orm import Session
 
-from app.provenance.record import get_raw_payload
+from app.provenance.record import _ALLOWED_RAW_TABLES, get_raw_payload
 
 logger = logging.getLogger(__name__)
 
@@ -120,19 +120,38 @@ def validate_and_clean(
     # 1. Validate every cited ref resolves
     cleaned = response_text
     cited_ids = CITE_RE.findall(response_text)
+    # Cache DB resolution per ref_id to avoid duplicate round-trips.
+    # Keyed on ref_id; value is True (resolved) or False (unresolvable).
+    _resolve_cache: dict[str, bool] = {}
+    # Deduplicate issue messages so the same ref_id doesn't produce two identical lines.
+    _seen_issues: set[str] = set()
+    # Deduplicate cite_tags so str.replace is called at most once per (ref_id, value) pair.
+    # str.replace replaces all occurrences in one call, so a second call for the same
+    # tag string is a no-op on already-replaced text but wastes the value-check.
+    _seen_tags: set[str] = set()
 
     for ref_id, value in cited_ids:
-        if ref_id not in provenance_ids:
-            resolved = _try_resolve(db, ref_id, merchant_id)
-            if not resolved:
-                issues.append(f"Unresolvable cite ref: {ref_id}")
-                cleaned = cleaned.replace(
-                    f'<cite ref="{ref_id}">{value}</cite>',
-                    f'{value} *(unverified)*',
-                )
+        cite_tag = f'<cite ref="{ref_id}">{value}</cite>'
+        if cite_tag in _seen_tags:
+            continue  # already replaced all occurrences of this exact tag form
+        _seen_tags.add(cite_tag)
 
-        # Also verify the cited numeric value is plausible given what tools returned
-        if tool_value_set and value.strip():
+        ref_unresolvable = False
+        if ref_id not in provenance_ids:
+            if ref_id not in _resolve_cache:
+                _resolve_cache[ref_id] = _try_resolve(db, ref_id, merchant_id)
+            if not _resolve_cache[ref_id]:
+                ref_unresolvable = True
+                issue_msg = f"Unresolvable cite ref: {ref_id}"
+                if issue_msg not in _seen_issues:
+                    issues.append(issue_msg)
+                    _seen_issues.add(issue_msg)
+                cleaned = cleaned.replace(cite_tag, f'{value} *(unverified)*')
+
+        # Also verify the cited numeric value is plausible given what tools returned.
+        # Skip this check when the ref is already flagged unresolvable — only one issue
+        # per cite tag.
+        if not ref_unresolvable and tool_value_set and value.strip():
             num = _extract_number(value)
             if num is not None and num != 0:
                 tolerance = max(0.01, abs(num) * 0.01)
@@ -144,7 +163,6 @@ def validate_and_clean(
                 if not value_ok:
                     issues.append(f"Cited value {value!r} for ref {ref_id!r} not found in tool results")
                     # Rewrite to unverified if not already done by ID check
-                    cite_tag = f'<cite ref="{ref_id}">{value}</cite>'
                     if cite_tag in cleaned:
                         cleaned = cleaned.replace(cite_tag, f'{value} *(unverified)*')
 
@@ -204,10 +222,7 @@ def validate_and_clean(
 
 def _try_resolve(db: Session, ref_id: str, merchant_id: str) -> bool:
     """Check whether the raw record exists. ref_id may be 'raw_table:record_id' or just a key."""
-    raw_tables = [
-        "raw_shopify_orders", "raw_shopify_products", "raw_shopify_refunds",
-        "raw_meta_insights", "raw_meta_campaigns", "raw_shiprocket_shipments",
-    ]
+    raw_tables = sorted(_ALLOWED_RAW_TABLES)
 
     # If ref_id looks like "table:record_id", try that table first
     if ":" in ref_id:

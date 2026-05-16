@@ -254,6 +254,12 @@ class TestChatLoopIntegration:
         assert mock_router.escalate.called, "Cascade (escalate) was never triggered"
         assert "gpt-4o" in models_used, f"gpt-4o was never called; models used: {models_used}"
         assert models_used[0] == "gpt-4o-mini", "First attempt should use cheap model"
+        assert result["all_citations_valid"] is True, (
+            f"Cascade should have fixed citation failures. Issues: {result['issues']}\nAnswer: {result['answer']}"
+        )
+        assert result.get("routing", {}).get("model") == "gpt-4o", (
+            f"Result should reflect escalated gpt-4o model. Routing: {result.get('routing')}"
+        )
 
     def test_cascade_not_triggered_on_infrastructure_failure(self):
         """max_turns infra failure should NOT cascade to gpt-4o — only citation failures cascade."""

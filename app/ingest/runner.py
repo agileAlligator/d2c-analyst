@@ -109,6 +109,9 @@ def main():
     parser.add_argument("--all", action="store_true", dest="all_connectors")
     args = parser.parse_args()
 
+    if not args.all_connectors and not args.connector:
+        parser.error("Specify --connector <name> or --all")
+
     connectors = ["shopify", "meta_ads", "shiprocket"] if args.all_connectors else [args.connector]
 
     with SessionLocal() as db:

@@ -106,6 +106,11 @@ _FORBIDDEN_TOKENS = {
     # DuckDB introspection functions that expose credentials/secrets
     "DUCKDB_SETTINGS", "DUCKDB_SECRETS", "DUCKDB_EXTENSIONS",
     "DUCKDB_COLUMNS", "DUCKDB_TABLES", "DUCKDB_VIEWS",
+    # Raw tables — not shadowed by merchant-scoped views, so unqualified references
+    # would bypass merchant isolation by resolving against the Postgres attachment.
+    "RAW_SHOPIFY_ORDERS", "RAW_SHOPIFY_REFUNDS", "RAW_SHOPIFY_PRODUCTS",
+    "RAW_SHOPIFY_CUSTOMERS", "RAW_META_CAMPAIGNS", "RAW_META_ADSETS",
+    "RAW_META_ADS", "RAW_META_INSIGHTS", "RAW_SHIPROCKET_SHIPMENTS",
 }
 
 

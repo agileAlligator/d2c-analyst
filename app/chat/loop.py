@@ -163,7 +163,7 @@ def _openai_attempt(question, db, merchant_id, history, model, oai_tools, client
             finish = response.choices[0].finish_reason
 
             if finish == "tool_calls" and msg.tool_calls:
-                messages.append(msg)
+                messages.append(msg.model_dump())
                 for tc in msg.tool_calls:
                     try:
                         tool_input = json.loads(tc.function.arguments)

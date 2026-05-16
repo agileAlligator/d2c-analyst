@@ -217,7 +217,7 @@ What's built now:
 - Per-connector token-bucket rate limiter (shared across concurrent workers via the same Python process; Redis-shareable at scale).
 - Two seeded merchants (demo: 80 orders, demo2: 5 orders) proving isolation in the test suite.
 
-**Measured:** `scripts/bench_ingest.py` (10 synthetic merchants × 20 raw_shopify_orders = 200 rows, single Postgres connection) — run `make bench` for a live reading. Note this isolates DB write throughput; real ingest adds API latency and per-merchant cursor overhead. At 10k merchants × 100 Shopify orders/hour = ~278 rows/sec sustained — single-process ingest is the first thing to shard.
+**Measured:** `scripts/bench_ingest.py` (10 synthetic merchants × 20 raw_shopify_orders = 200 rows, single Postgres connection) sustains **~335 rows/sec** on the dev container; run `make bench` to reproduce. Note this isolates DB write throughput; real ingest adds API latency and per-merchant cursor overhead. At 10k merchants × 100 Shopify orders/hour = ~278 rows/sec sustained — comfortably within the measured single-process write ceiling, but single-process ingest is still the first thing to shard once API latency compounds.
 
 What breaks first at 10k merchants:
 

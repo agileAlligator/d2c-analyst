@@ -21,11 +21,11 @@
 | SQL sandbox | ✅ | SELECT-only DuckDB over Postgres, provenance bundle |
 | Chat tool-use loop | ✅ | 6 tools, gpt-4o/gpt-4o-mini via router, 12-turn max, json serialization fixed |
 | Model router | ✅ | HeuristicRouter: 8 signals → gpt-4o-mini or gpt-4o; FrugalGPT cascade on citation fail |
-| Citation validator | ✅ | server-side, always scans bare numbers ≥100, 2 retries, unverified badge fallback |
+| Citation validator | ✅ | server-side, always scans bare numbers ≥2 digits (≥10), 2 retries, unverified badge fallback |
 | Margin Watch agent | ✅ | courier switch, ad pause (ROAS 1.45x below 2.0 threshold), price raise proposals; NOT_SENT enforced |
 | Streamlit UI | ✅ | chat + tool call trace + routing badge (⚡/🧠) |
 | FastAPI | ✅ | /chat, /runs, /health; RoutingInfo in ChatResponse |
-| Seed data | ✅ | demo: 80 orders, 30d Meta (ROAS 1.35x), 80 shipments; demo2: 5 orders for RLS isolation |
+| Seed data | ✅ | demo: 80 orders, 30d Meta (ROAS 1.45x), 80 shipments; demo2: 5 orders for RLS isolation |
 | RLS hardening | ✅ | d2c_app role (NOSUPERUSER NOBYPASSRLS); NullPool + after_begin listener; GUC enforced end-to-end |
 | Eval suite | ✅ | 19 golden questions (incl. 3 adversarial), citation coverage ≥80%, accuracy ≥70% |
 | Adversarial hardening | ✅ | 7-round loop; 0 Slytherin points in final round |
@@ -37,15 +37,17 @@
 
 ## Key decisions
 
-- **Connectors:** Shopify, Meta Ads, Shiprocket — see MASTER_PLAN.md §2.1
+- **Connectors:** Shopify, Meta Ads, Shiprocket — rationale in README §2 (rejected alternatives: Google Ads, Klaviyo, QuickBooks)
 - **Schema:** raw (immutable) + universal (entities+events+links) + provenance as first-class table
 - **Citation:** server-side validation, not prompt-only — every number resolved against provenance; bare numbers replaced with `*(uncited)*` in the returned text
 - **Model routing:** HeuristicRouter (8 signals) + FrugalGPT cascade; gpt-4o-mini default, gpt-4o on complexity or citation failure
-- **Agent:** Margin Watch — proposes courier switch, ad pause (fires at ROAS 1.35x < 2.0 threshold), price raise; never executes (NOT_SENT: True)
+- **Agent:** Margin Watch — proposes courier switch, ad pause (fires at ROAS 1.45x < 2.0 threshold), price raise; never executes (NOT_SENT: True)
 - **Currency:** INR throughout (assumption documented in README)
 - **Auth:** Shiprocket SHIPROCKET_TOKEN from .env; Shopify private app; Meta long-lived token
 - **Idempotency:** MD5 event IDs keyed on (merchant_id, entity_id, event_type, occurred_at)
 - **Ingest payload preservation:** on re-ingest conflict, payload is preserved (not overwritten); only `fetched_at` and `run_id` are updated — protects provenance round-trip from partial API responses
+- **Per-row provenance:** `metrics/catalog.py` uses `.get()` not `.pop()` when flattening provenance IDs (v0.1.3 fix) so each result row retains its own per-row provenance list; the agent cites only the source rows that produced each specific order/proposal, not the global bundle
+- **RLS two-path architecture (v0.1.3):** SQLAlchemy path connects as `d2c_app` (`NOSUPERUSER NOBYPASSRLS`) with `NullPool` + `after_begin` listener replaying `app.current_merchant` GUC; DuckDB analytical path uses the superuser (`DATABASE_URL_ANALYTICS`) and enforces merchant isolation via per-query temp views with `WHERE merchant_id = '<merchant_id>'`. Tradeoff is documented in README §3.
 
 ## Adversarial hardening (7 rounds)
 

@@ -109,6 +109,30 @@ class TestPgPrefixBlocked:
 
 
 # ---------------------------------------------------------------------------
+# Comment-bypass + path-literal blocking  (no DB)
+# ---------------------------------------------------------------------------
+
+
+class TestCommentBypassBlocked:
+    def test_sql_comment_bypass_blocked(self):
+        """pg/**/.entities must not bypass the pg. check via block comment injection."""
+        with pytest.raises(ValueError, match="Direct schema access"):
+            _validate_query("SELECT * FROM pg/**/.entities")
+
+    def test_line_comment_bypass_blocked(self):
+        with pytest.raises(ValueError, match="Direct schema access"):
+            _validate_query("SELECT * FROM pg-- x\n.entities")
+
+    def test_path_literal_absolute_blocked(self):
+        with pytest.raises(ValueError, match="path literals"):
+            _validate_query("SELECT * FROM '/etc/passwd'")
+
+    def test_path_literal_dot_relative_blocked(self):
+        with pytest.raises(ValueError, match="path literals"):
+            _validate_query("SELECT * FROM './data.csv'")
+
+
+# ---------------------------------------------------------------------------
 # Merchant isolation  (DB-gated)
 # ---------------------------------------------------------------------------
 

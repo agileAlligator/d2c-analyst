@@ -24,6 +24,10 @@ def get_duckdb_conn() -> duckdb.DuckDBPyConnection:
         f"user={p['user']} password={p['pw']}"
     )
     conn.execute(f"ATTACH '{attach_str}' AS pg (TYPE POSTGRES, READ_ONLY)")
+    # Disable DuckDB's local filesystem so path-literal replacement scans
+    # (SELECT * FROM 'file.csv') cannot read host files.  The Postgres ATTACH
+    # extension uses a TCP connection and is unaffected by this setting.
+    conn.execute("SET disabled_filesystems='LocalFileSystem'")
     return conn
 
 
@@ -103,6 +107,12 @@ _FORBIDDEN_TOKENS = {
     "GRANT", "REVOKE", "EXECUTE", "ATTACH", "DETACH", "CALL", "PRAGMA",
     "INSTALL", "LOAD", "IMPORT", "EXPORT", "READ_CSV", "READ_JSON",
     "READ_PARQUET", "PARQUET_SCAN", "READ_TEXT", "READ_BLOB", "GLOB", "WRITE_CSV",
+    # DuckDB auto-sniffing and format variants (underscore is \w so these are single tokens)
+    "READ_CSV_AUTO", "READ_JSON_AUTO", "READ_NDJSON_AUTO", "READ_JSON_OBJECTS",
+    "SNIFF_CSV", "ST_READ", "READ_PARQUET_AUTO",
+    # DuckDB postgres extension functions — bypass merchant-scoped views entirely
+    # by sending raw SQL directly to Postgres over the ATTACH'd connection.
+    "POSTGRES_QUERY", "POSTGRES_EXECUTE",
     # DuckDB introspection functions that expose credentials/secrets
     "DUCKDB_SETTINGS", "DUCKDB_SECRETS", "DUCKDB_EXTENSIONS",
     "DUCKDB_COLUMNS", "DUCKDB_TABLES", "DUCKDB_VIEWS",
@@ -114,15 +124,34 @@ _FORBIDDEN_TOKENS = {
 }
 
 
+def _strip_sql_comments(sql: str) -> str:
+    """Remove SQL line comments (--) and block comments (/* */) from a query."""
+    sql = re.sub(r'--[^\n]*', '', sql)
+    sql = re.sub(r'/\*.*?\*/', '', sql, flags=re.DOTALL)
+    return sql
+
+
 def _validate_query(query: str) -> None:
     """Reject anything that isn't a safe SELECT targeting warehouse tables."""
-    stripped = query.strip().rstrip(";")
+    # Strip comments before all checks so that constructs like
+    # pg/**/.entities or pg-- x\n.entities cannot bypass pattern matches.
+    clean = _strip_sql_comments(query)
+    stripped = clean.strip().rstrip(";")
     if ";" in stripped:
         raise ValueError("Multiple statements not allowed")
-    tokens = set(re.split(r"\W+", query.upper()))
+    # Block path-literal reads: FROM '/...' or FROM './...'
+    # Absolute paths ('/etc/passwd') and dot-relative paths ('./file') are caught
+    # here as defense-in-depth. Relative paths without a leading / or . (e.g.
+    # 'data.csv') are blocked at the engine level by SET disabled_filesystems=
+    # 'LocalFileSystem' in get_duckdb_conn(), so no regex alternative is needed
+    # for them — the third alternative that matched bare extensions was too greedy
+    # and produced false positives on innocuous string literals like 'report.json'.
+    if re.search(r"'\s*/|'\s*\.", clean, re.IGNORECASE):
+        raise ValueError("Query contains path literals which are not allowed")
+    tokens = set(re.split(r"\W+", clean.upper()))
     forbidden_found = tokens & _FORBIDDEN_TOKENS
     if forbidden_found:
         raise ValueError(f"Forbidden SQL tokens: {forbidden_found}")
     # Block schema-qualified pg access in all forms: pg.table, "pg".table, `pg`.table
-    if re.search(r'(?:\bpg\b|"pg"|`pg`)\s*\.', query, re.IGNORECASE):
+    if re.search(r'(?:\bpg\b|"pg"|`pg`)\s*\.', clean, re.IGNORECASE):
         raise ValueError("Direct schema access (pg.) not permitted — use bare table names")

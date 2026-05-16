@@ -1,7 +1,7 @@
 # Project Status
 
 **Last updated:** 2026-05-16
-**Phase:** Complete — v0.1.6 (adversarial loop round 2 hardening)
+**Phase:** Complete — v0.1.8 (adversarial hardening round 3)
 
 ## What's built
 
@@ -27,13 +27,13 @@
 | FastAPI | ✅ | /chat, /runs, /health; RoutingInfo in ChatResponse |
 | Seed data | ✅ | demo: 80 orders, 30d Meta (ROAS 1.45x), 80 shipments; demo2: 5 orders for RLS isolation |
 | RLS hardening | ✅ | d2c_app role (NOSUPERUSER NOBYPASSRLS); NullPool + after_begin listener; GUC enforced end-to-end |
-| Eval suite | ✅ | 19 golden questions (incl. 3 adversarial), citation coverage ≥80%, accuracy ≥70% |
+| Eval suite | ✅ | 19 golden questions (incl. 3 adversarial), citation coverage ≥80%, accuracy ~63% on last known run (target ≥70%) |
 | Adversarial hardening | ✅ | 7-round loop; 0 Slytherin points in final round |
 | Connector fixture tests | ✅ | Meta Ads + Shiprocket fixture JSON + 16 offline tests |
 | Bench script | ✅ | scripts/bench_ingest.py; 200 rows at ~335 rows/sec; make bench |
 | Seed determinism | ✅ | BASE_DATE=2026-05-13 anchor; re-seeds produce identical analytical output |
 | CI | ✅ | GitHub Actions: lint + pytest (eval skipped when OPENAI_API_KEY=dummy) |
-| README | ✅ | All 9 brief questions answered; real agent run log (1.45x ROAS, ₹5,310/month) |
+| README | ✅ | All 9 brief questions answered; real agent run log (1.45x ROAS, ₹4,233/month) |
 
 ## Key decisions
 
@@ -113,6 +113,37 @@ A second round of hardening run via the `/harden` slash command (`.claude/comman
 - **Stale tests fixed** — `test_record_id_insight` updated to include required `campaign_id`; `test_negative_margin_emits_raise_price` updated to assert `entity_key == "order:..."` (variant-level branch removed).
 - **`wont_fix.md` #17 and #18 corrected** — #17 reworded to accurately scope the table-ownership concern to the no-`.env` case; #18 corrected to note `d2c_app` IS created in CI but tests still connect as superuser.
 - **README/STATUS test count** — corrected to 186 total; 52 DB-gated, 21 eval-gated, 113 fully offline (double-count fixed).
+
+## v0.1.7 wont_fix audit (entries 21–27)
+
+Seven new known-limitation entries added to `docs/wont_fix.md`. Code fixes for these issues are deferred to v0.2 or later.
+
+- **#21** — Streamlit `merchant_id` sidebar input is silently ignored (Pydantic drops extra fields; `/runs` uses `X-API-Key` header, not query param).
+- **#22** — Multi-turn history is stripped of `<cite>` tags before storage (API returns validator-cleaned answer; model has no cite context on follow-up turns).
+- **#23** — `raise_price` proposals target completed historical orders via the wrong Shopify endpoint and use historical loss, not forward-looking impact, as the ₹ figure.
+- **#24** — Shiprocket DESC offset pagination can silently skip records when concurrent writes shift page boundaries during a fetch.
+- **#25** — `refunded_order_count` counts refund events (`ev.entity_id` = refund entity), not distinct orders; an order with two partial refunds counts as 2.
+- **#26** — `_collect_tool_numbers` adds JSONB identifier strings (order numbers, Shopify IDs, postal codes) to `tool_value_set`, allowing identifier-matching citations to pass value verification.
+- **#27** — `tool_value_set` empty when the model answers without tool calls; the validator skips numeric value verification entirely, letting fabricated numbers through if the provenance ID resolves.
+
+## v0.1.8 adversarial hardening (round 3)
+
+Multi-round parallel Opus audit → Sonnet fix → Opus review loop. Fixes applied:
+
+- **`meta_to_universal.py` null-value crashes** — `a.get("value", "0")` returned `None` when key existed with JSON null value; changed to `a.get("value") or "0"` in all three locations (spend, purchase_count, purchase_value).
+- **Seed purchase count wrong** — `actions[].value` was writing `purchase_value / 5000` (revenue-derived float) instead of the simulated `purchases` integer count; corrected to match what the Meta normalizer expects (integer count in `actions`, revenue float in `action_values`).
+- **Seed product ID non-determinism** — product/variant IDs used Python `hash(sku)` which is randomized by `PYTHONHASHSEED`; changed to `hashlib.md5` for stable IDs on re-seed.
+- **Margin Watch courier savings overstated (single-courier case)** — when only one courier passed the minimum-shipments threshold, `best=None` and formula collapsed to `total_RTOs × unit_cost` (total, not differential); added `if best is None: return` guard; removed now-dead `if best else` branches.
+- **Margin Watch test assertions stale** — `expected_inr_impact` updated from 1800.0 to 1612.5 (differential formula: 25 × (0.48−0.05) × 150); adset-pause assertion updated from `body.status == "PAUSED"` to `"PAUSED" in note`.
+- **DuckDB `POSTGRES_QUERY` bypass** — `postgres_query('pg', ...)` could execute raw SQL against the attached Postgres database, bypassing merchant-scoped temp views; added `POSTGRES_QUERY` and `POSTGRES_EXECUTE` to `_FORBIDDEN_TOKENS`.
+- **DuckDB SQL comment bypass** — `pg/**/.entities` bypassed the `pg.` schema-access check; added `_strip_sql_comments()` applied to all checks before tokenization.
+- **DuckDB replacement-scan bypass** — `SELECT * FROM 'data.csv'` not blocked by token filter (no function name); added `SET disabled_filesystems='LocalFileSystem'` to the connection setup.
+- **DuckDB path-literal regex false positives** — third regex alternative for filename extensions caused false-positive blocks on legitimate string values; removed, relying on `disabled_filesystems` for that vector.
+- **Validator zero-citation false failure** — `if num != 0` filter in value-check loop caused `<cite>0</cite>` to always fail even when 0.0 was in `tool_value_set`; removed the filter.
+- **`ingest_cursors` RLS** — table had no RLS policy; added `ENABLE ROW LEVEL SECURITY` + `FORCE ROW LEVEL SECURITY` + `CREATE POLICY merchant_isolation` matching the pattern in `create_tables.py`.
+- **README/STATUS accuracy fixes** — "token-bucket" → "sliding-window" rate limiter; accuracy claim qualified as "~63% on last known run (target ≥70%)"; ₹5,310/month → ₹4,233/month (differential courier formula); golden-questions table noted as representative sample.
+- **`wont_fix.md` entries #28–29 added** — multi-number unverified cite double-annotation (cosmetic); `ingest_cursors` RLS `WITH CHECK` missing (write-side unfiltered, accepted as consistent with codebase pattern).
+- **9 new tests** — single-courier early-return; SQL comment bypass (block + line); path-literal (absolute + dot-relative); zero-cite pass/fail; multi-number cite any-match.
 
 ## Known limitations
 

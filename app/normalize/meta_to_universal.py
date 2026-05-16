@@ -95,7 +95,7 @@ def _upsert_insight(db: Session, merchant_id: str, raw: RawMetaInsight):
     prov_record(db, merchant_id, "entities", str(entity_id),
                 "raw_meta_insights", raw.source_record_id, TRANSFORM_ID)
 
-    spend = Decimal(str(p.get("spend", "0")))
+    spend = Decimal(str(p.get("spend") or "0"))
     occurred_at = _parse_dt(date + "T00:00:00+00:00") if date else None
 
     if occurred_at and spend > 0:
@@ -104,11 +104,11 @@ def _upsert_insight(db: Session, merchant_id: str, raw: RawMetaInsight):
         # Insights payload — using actions for revenue is the bug this fixes.
         actions = p.get("actions") or []
         action_values = p.get("action_values") or []
-        purchase_count = int(
-            next((a.get("value", "0") for a in actions if a.get("action_type") == "purchase"), "0")
-        )
+        purchase_count = int(float(
+            next((a.get("value") or "0" for a in actions if a.get("action_type") == "purchase"), "0")
+        ))
         purchase_value = Decimal(str(
-            next((a.get("value", "0") for a in action_values if a.get("action_type") == "purchase"), "0")
+            next((a.get("value") or "0" for a in action_values if a.get("action_type") == "purchase"), "0")
         ))
 
         event_id = _upsert_event(db, merchant_id, entity_id, "ad_spend", occurred_at,

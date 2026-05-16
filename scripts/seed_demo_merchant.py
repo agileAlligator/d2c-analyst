@@ -1,4 +1,5 @@
 """Seed a demo merchant with realistic synthetic data for testing."""
+import hashlib
 import sys
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -81,9 +82,9 @@ def _upsert_raw(db, model_class, merchant_id: str, source_record_id: str, **kwar
 def _seed_products(db):
     for sku, name, price in SKUS:
         product = {
-            "id": abs(hash(sku)) % 10**10,
+            "id": int(hashlib.md5(sku.encode()).hexdigest()[:8], 16) % 10**9,
             "title": name,
-            "variants": [{"id": abs(hash(sku + "v")) % 10**10, "sku": sku, "price": str(price)}],
+            "variants": [{"id": int(hashlib.md5((sku + "v").encode()).hexdigest()[:8], 16) % 10**9, "sku": sku, "price": str(price)}],
             "updated_at": datetime.now(UTC).isoformat(),
         }
         _upsert_raw(db, RawShopifyProduct, MERCHANT_ID, f"product:{product['id']}",
@@ -173,7 +174,8 @@ def _seed_meta(db):
                 "cpc": f"{spend/max(clicks,1):.2f}",
                 "cpm": f"{spend/max(impressions,1)*1000:.2f}",
                 "ctr": f"{clicks/max(impressions,1):.4f}",
-                "actions": [{"action_type": "purchase", "value": f"{purchase_value:.2f}"}],
+                "actions": [{"action_type": "purchase", "value": str(purchases)}],
+                "action_values": [{"action_type": "purchase", "value": f"{purchase_value:.2f}"}],
                 "date_start": date,
                 "date_stop": date,
             }

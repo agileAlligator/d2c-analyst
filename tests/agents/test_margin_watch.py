@@ -42,7 +42,7 @@ class TestCourierSwitchProposal:
         p = agent._proposals[0]
         assert p.action_type == "switch_courier"
         assert p.entity_key == "courier:Shadowfax"
-        assert p.expected_inr_impact == pytest.approx(1800.0)
+        assert p.expected_inr_impact == pytest.approx(1612.5)
         assert p.would_do_api_call["NOT_SENT"] is True
         assert p.would_do_api_call["body"]["preferred_courier"] == "BlueDart"
 
@@ -58,6 +58,16 @@ class TestCourierSwitchProposal:
     def test_no_shipments_silently_returns(self):
         agent = _make_agent()
         with patch("app.agents.margin_watch.query_metric", return_value=_metric([])):
+            agent._propose_courier_switch()
+        assert len(agent._proposals) == 0
+
+    def test_single_courier_above_threshold_no_proposal(self):
+        # Only one courier passes the min-shipments threshold — best=None, so no proposal.
+        rows = [
+            {"courier": "OnlyOne", "rto_rate": 0.50, "rto_count": 5, "total_shipments": 10},
+        ]
+        agent = _make_agent()
+        with patch("app.agents.margin_watch.query_metric", return_value=_metric(rows)):
             agent._propose_courier_switch()
         assert len(agent._proposals) == 0
 
@@ -89,8 +99,8 @@ class TestAdsetPauseProposal:
         p = agent._proposals[0]
         assert p.action_type == "pause_adset"
         assert p.expected_inr_impact == pytest.approx(3000.0)
-        assert p.would_do_api_call["body"]["status"] == "PAUSED"
-        assert p.would_do_api_call["NOT_SENT"] is True
+        assert "NOT_SENT" in p.would_do_api_call and p.would_do_api_call["NOT_SENT"] is True
+        assert "PAUSED" in p.would_do_api_call["note"]
 
     def test_no_proposal_above_2x_roas(self):
         spend_result = _metric([{"campaign": "hot", "ad_spend": 1000.0}])

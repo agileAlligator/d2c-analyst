@@ -16,6 +16,22 @@ def run():
                 PRIMARY KEY (merchant_id, connector, resource)
             )
         """))
+        conn.execute(text("ALTER TABLE ingest_cursors ENABLE ROW LEVEL SECURITY"))
+        conn.execute(text("ALTER TABLE ingest_cursors FORCE ROW LEVEL SECURITY"))
+        conn.execute(text("""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_policies
+                    WHERE tablename = 'ingest_cursors'
+                      AND policyname = 'merchant_isolation'
+                ) THEN
+                    CREATE POLICY merchant_isolation ON ingest_cursors
+                        USING (merchant_id = current_setting('app.current_merchant', true));
+                END IF;
+            END
+            $$
+        """))
         conn.commit()
     print("ingest_cursors table ready.")
 

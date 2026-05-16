@@ -2,7 +2,7 @@
 
 AI analyst + autonomous Margin Watch agent for D2C brands. Chat with your data. Get cited answers. Watch your margins.
 
-On the seed merchant (80 orders, 30-day window), Margin Watch surfaces **~₹5,310/month** in actionable savings: ₹1,650 from a courier switch (Shadowfax→BlueDart), ₹3,608 from pausing underperforming campaigns (ROAS 1.45x, below the 2.0x threshold), and ₹52 from repricing two negative-margin SKUs.
+On the seed merchant (80 orders, 30-day window), Margin Watch surfaces **~₹4,233/month** in actionable savings: ₹573 from a courier switch (Shadowfax→BlueDart, computed as 23 shipments × (47.8% − 31.2%) × ₹150/RTO), ₹3,608 from pausing underperforming campaigns (ROAS 1.45x, below the 2.0x threshold), and ₹52 from repricing two negative-margin SKUs.
 
 ---
 
@@ -164,7 +164,7 @@ Why this approach over alternatives: RouteLLM (trained classifier) requires labe
 
 **Why Margin Watch:** it is the only agent where all three connectors are load-bearing simultaneously — remove any one and the proposals degrade. The courier switch needs Shiprocket RTO data. The ad pause needs Meta spend. The price raise needs Shopify revenue *and* Shiprocket shipping cost to compute the actual margin. That cross-connector dependency is what makes it a real test of the universal model, not a single-source query with an LLM wrapper.
 
-The ad-pause proposal on the seed merchant fires because ROAS is 1.45x — below the 2.0x threshold, and below break-even on a blended basis, but not a number a founder running on vibes would notice. They'd see "ads are running," not "ads are generating ₹1.45 for every ₹1 spent on ₹12,026 of ad spend, and pausing the bottom 30% by spend preserves higher-ROAS campaigns while recovering ~₹3,608." That cross-source calculation — spend from Meta, revenue attribution through discount codes, shipping cost from Shiprocket — is what the agent exists to do. On the seed merchant it surfaces ~₹5,310/month. At 10k merchants that compounds — that's the product.
+The ad-pause proposal on the seed merchant fires because ROAS is 1.45x — below the 2.0x threshold, and below break-even on a blended basis, but not a number a founder running on vibes would notice. They'd see "ads are running," not "ads are generating ₹1.45 for every ₹1 spent on ₹12,026 of ad spend, and pausing the bottom 30% by spend preserves higher-ROAS campaigns while recovering ~₹3,608." That cross-source calculation — spend from Meta, revenue attribution through discount codes, shipping cost from Shiprocket — is what the agent exists to do. On the seed merchant it surfaces ~₹4,233/month. At 10k merchants that compounds — that's the product.
 
 Triggered on demand via `make agent`. Scheduling is deliberately deferred — at demo scale, on-demand is honest; production scheduling (cron/Airflow/Cloud Scheduler) belongs outside the app and is enumerated under the scale section.
 
@@ -186,8 +186,8 @@ Real run output (`make agent` on seed data):
 Blended ROAS (14d): 1.45x (spend ₹12,026)
 
 ### 1. switch_courier — courier:Shadowfax
-**Expected impact:** ₹1,650
-**Reasoning:** Courier 'Shadowfax' has an RTO rate of 47.8% (11 returns in 30 days). Switching to 'BlueDart' (RTO rate 31.2%) could save ~₹1,650/month.
+**Expected impact:** ₹573
+**Reasoning:** Switching from 'Shadowfax' (RTO rate 47.8%) to 'BlueDart' (RTO rate 31.2%) on 23 shipments could save ~₹573 (47.8% − 31.2% × ₹150/RTO).
 **Provenance:** shipment:8024, shipment:8028, shipment:8026, shipment:8067, shipment:8020
 **Would-do API call:** `{'connector': 'shiprocket', 'action': 'update_courier_preference', 'body': {'preferred_courier': 'BlueDart'}, 'NOT_SENT': True}`
 
@@ -195,7 +195,7 @@ Blended ROAS (14d): 1.45x (spend ₹12,026)
 **Expected impact:** ₹3,608
 **Reasoning:** Blended ROAS is 1.45x over the last 14 days (₹12,026 spend, ₹17,485 attributed revenue). Pausing the bottom 30% of campaigns by spend could save ~₹3,608 while preserving higher-ROAS campaigns.
 **Provenance:** insight:camp_003:2026-05-05, insight:camp_001:2026-05-11, insight:camp_001:2026-05-05, insight:camp_001:2026-05-04, insight:camp_001:2026-05-12
-**Would-do API call:** `{'connector': 'meta_ads', 'endpoint': 'POST /{ad-set-id}', 'body': {'status': 'PAUSED'}, 'NOT_SENT': True}`
+**Would-do API call:** `{'connector': 'meta_ads', 'note': 'Pause bottom 30% of campaigns by spend — each requires a separate POST /{ad-set-id} with {"status": "PAUSED"}', 'NOT_SENT': True}`
 
 ### 3. raise_price — order:1027
 **Expected impact:** ₹44
@@ -218,7 +218,7 @@ What's built now:
 - `merchant_id` on every table. RLS enforced via Postgres GUC (`app.current_merchant`) on the `d2c_app` role (`NOSUPERUSER NOBYPASSRLS`) — no query touches another merchant's rows on the SQLAlchemy path.
 - The engine uses `NullPool` (no connection reuse) so the GUC is replayed cleanly on every transaction via a `after_begin` session listener. At high concurrency, replace with a bounded pool + connection-scoped GUC injection.
 - Connector workers key on `(merchant_id, connector, cursor)` — re-running a job is a no-op.
-- Per-connector token-bucket rate limiter (shared across concurrent workers via the same Python process; Redis-shareable at scale).
+- Per-connector sliding-window rate limiter (shared across concurrent workers via the same Python process; Redis-shareable at scale).
 - Two seeded merchants (demo: 80 orders, demo2: 5 orders) proving isolation in the test suite.
 
 **Measured:** `scripts/bench_ingest.py` (10 synthetic merchants × 20 raw_shopify_orders = 200 rows, single Postgres connection) sustains **~335 rows/sec** on the dev container; run `make bench` to reproduce. Note this isolates DB write throughput; real ingest adds API latency and per-merchant cursor overhead. At 10k merchants × 100 Shopify orders/hour = ~278 rows/sec sustained — comfortably within the measured single-process write ceiling, but single-process ingest is still the first thing to shard once API latency compounds.
@@ -240,7 +240,7 @@ What breaks first at 10k merchants:
 
 Run `make seed && make eval` with `OPENAI_API_KEY` set in `.env`.
 
-**Measured results (gpt-4o on seed data, 19 golden questions):**
+**Measured results (gpt-4o on seed data, representative sample of 19 golden questions):**
 
 | Question | ✅ | Citations | Latency | Tools |
 |---|---|---|---|---|
@@ -257,6 +257,8 @@ Run `make seed && make eval` with `OPENAI_API_KEY` set in `.env`.
 | *Delivery time (adversarial)* | ✅* | 0 | — | 1 |
 | *Revenue per Meta click (adversarial)* | ⚠ | 2 | — | 2 |
 | *Impression→order conversion delta (adversarial)* | ⚠ | 1 | — | 3 |
+
+*(Full question set and assertions in `tests/eval/golden_questions.py`.)*
 
 **Citation enforcement: server-side, all 19 questions. Bare numbers replaced with `*(uncited)*` in output; unresolvable refs replaced with `*(unverified)*`. Accuracy: ~63% on last known run (run `make eval` to regenerate); P50: 2.1s, P95: 28s. Blended cost: ~$0.028/turn.**
 

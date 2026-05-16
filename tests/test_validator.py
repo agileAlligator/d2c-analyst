@@ -317,6 +317,38 @@ def test_proper_noun_year_not_stripped(mock_db):
         )
 
 
+def test_zero_citation_with_zero_in_tool_value_set_passes(mock_db):
+    """<cite>0</cite> should pass when tool_value_set contains 0.0"""
+    text = '<cite ref="prov:123">0</cite>'
+    with patch("app.chat.validator._try_resolve", return_value=True):
+        cleaned, valid, issues = validate_and_clean(
+            text, ["prov:123"], mock_db, merchant_id="demo", tool_value_set={0.0}
+        )
+    assert "*(unverified)*" not in cleaned
+    assert len([i for i in issues if "not found in tool results" in i]) == 0
+
+
+def test_zero_citation_without_zero_in_tool_fails(mock_db):
+    """<cite>0</cite> should fail when tool_value_set contains only non-zero values"""
+    text = '<cite ref="prov:123">0</cite>'
+    with patch("app.chat.validator._try_resolve", return_value=True):
+        cleaned, valid, issues = validate_and_clean(
+            text, ["prov:123"], mock_db, merchant_id="demo", tool_value_set={500.0, 1000.0}
+        )
+    assert "*(unverified)*" in cleaned or not valid
+
+
+def test_multi_number_cite_all_numbers_checked(mock_db):
+    """When cite value has multiple numbers, at least one must match tool_value_set"""
+    # Only 99999 is in tool results, not 31814 — must still pass (any match)
+    text = '<cite ref="prov:123">₹31,814 (was ₹99,999)</cite>'
+    with patch("app.chat.validator._try_resolve", return_value=True):
+        cleaned, valid, issues = validate_and_clean(
+            text, ["prov:123"], mock_db, merchant_id="demo", tool_value_set={99999.0}
+        )
+    assert len([i for i in issues if "not found in tool results" in i]) == 0
+
+
 def test_lowercase_preceding_word_still_strips_year(mock_db):
     """Guard: years after single capitalized or lowercase words must still be stripped."""
     cases = [

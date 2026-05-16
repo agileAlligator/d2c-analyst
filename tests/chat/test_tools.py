@@ -103,7 +103,7 @@ def test_orders_metric_is_time_windowed_and_cited(db):
     count_90 = result_90["rows"][0].get("order_count")
 
     assert count_30 is not None and int(count_30) > 0, f"orders 30d should be positive, got {count_30}"
-    assert int(count_90) > int(count_30), f"90d order count ({count_90}) should be > 30d ({count_30}) — seed data spans 60 days so some orders must fall in 30–60d range; if equal, {time_filter} was likely dropped"
+    assert int(count_90) > int(count_30), f"Expected count_90 ({count_90}) > count_30 ({count_30}); time filter may not be applying correctly"
     assert len(result_30.get("provenance_ids", [])) > 0, "orders 30d must have provenance IDs"
 
 

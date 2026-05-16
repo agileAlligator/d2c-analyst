@@ -99,6 +99,12 @@ def _extract_number(s: str) -> float | None:
         return None
 
 
+def _extract_all_numbers(text: str) -> list[float]:
+    """Return all numeric values from text, stripping currency symbols and commas."""
+    cleaned_text = re.sub(r"[₹$,]", "", text)
+    return [float(m) for m in re.findall(r"-?\d+\.?\d*", cleaned_text) if m]
+
+
 def validate_and_clean(
     response_text: str,
     provenance_ids: list[str],
@@ -152,17 +158,21 @@ def validate_and_clean(
         # Skip this check when the ref is already flagged unresolvable — only one issue
         # per cite tag.
         if not ref_unresolvable and tool_value_set and value.strip():
-            num = _extract_number(value)
-            if num is not None and num != 0:
-                tolerance = max(0.01, abs(num) * 0.01)
+            all_nums = _extract_all_numbers(value)
+            if all_nums:
+                # At least one number in the cite value must match a tool result.
+                # Checking all numbers catches cases like <cite ref="id">₹31,814 (was ₹99,999)</cite>
+                # where only the first number was previously verified.
                 value_ok = any(
-                    abs(num - v) <= tolerance
-                    or (v < 0 < num and abs(abs(num) - abs(v)) <= tolerance)
-                    for v in tool_value_set
+                    any(
+                        abs(num - v) <= max(0.01, abs(num) * 0.01)
+                        or (v < 0 < num and abs(abs(num) - abs(v)) <= max(0.01, abs(num) * 0.01))
+                        for v in tool_value_set
+                    )
+                    for num in all_nums
                 )
                 if not value_ok:
                     issues.append(f"Cited value {value!r} for ref {ref_id!r} not found in tool results")
-                    # Rewrite to unverified if not already done by ID check
                     if cite_tag in cleaned:
                         cleaned = cleaned.replace(cite_tag, f'{value} *(unverified)*')
 

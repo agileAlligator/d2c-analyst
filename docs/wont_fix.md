@@ -152,7 +152,7 @@ The `compare(metric, period_a, period_b)` tool generates synthetic IDs like `com
 
 ## 15. Wall-clock `NOW()` makes README ₹ figures time-bounded
 
-Metric queries use `NOW() - INTERVAL '...'` while seed data is anchored to BASE_DATE=2026-05-13. README figures (₹31,814 30d revenue, ROAS 1.45x, ₹5,310/month) are accurate only while the rolling window intersects the seeded date range. Past roughly 2026-07-13, the 30d window returns zero seed orders. Fix: a configurable `AS_OF_DATE` parameter in metric queries, or advance BASE_DATE before each submission demo. Scope: v0.2.
+Metric queries use `NOW() - INTERVAL '...'` while seed data is anchored to BASE_DATE=2026-05-13. README figures (₹31,814 30d revenue, ROAS 1.45x, ₹4,233/month) are accurate only while the rolling window intersects the seeded date range. Past roughly 2026-07-13, the 30d window returns zero seed orders. Fix: a configurable `AS_OF_DATE` parameter in metric queries, or advance BASE_DATE before each submission demo. Scope: v0.2.
 
 ## 16. `raw_shopify_products` and `raw_shopify_customers` have no downstream normalizer
 
@@ -173,3 +173,39 @@ The bare-number validator excludes numbers whose start position falls within a `
 ## 20. `history` field enables prompt-injection via the chat API
 
 `/chat` accepts a `history: list[dict]` field that is spliced directly after the system prompt with no role or content validation. A caller can inject `{"role": "system", ...}` entries to override instructions, or `{"role": "tool", ...}` entries to fabricate tool results with arbitrary provenance IDs. The validator's provenance check only covers IDs collected from actual `dispatch_tool` calls in the current attempt, so injected tool messages with real-looking IDs can survive the check if their content doesn't trigger bare-number detection. Fix: filter history to only `user`/`assistant` roles; validate tool messages against known tool names and schemas. Scope: security hardening in v0.2.
+
+## 21. Streamlit `merchant_id` sidebar input is silently ignored
+
+The sidebar "Merchant ID" text input in `app/ui/streamlit_app.py` sends `merchant_id` in the POST body and as a `/runs?merchant_id=` query param, but `ChatRequest` in `app/api/main.py` has no `merchant_id` field (Pydantic drops extras), and the `/runs` endpoint derives merchant from the `X-API-Key` header, not a query param. The input does nothing. Fix: remove the input or wire it through the API key mapping. Scope: UI/API redesign in v0.2.
+
+## 22. Multi-turn history is stripped of cite tags before storage
+
+`app/ui/streamlit_app.py` stores `data["answer"]` in history, but the API returns the validator-cleaned answer (all `<cite>` tags stripped by `app/chat/validator.py`). The system prompt instructs the model to cite provenance IDs in follow-up turns, but the history it receives has no cite tags to reference. Fix: return both a `raw_answer` (with tags, for history) and a `display_answer` (tag-free, for UI) from the `/chat` endpoint; store `raw_answer` in history. Scope: API response schema change in v0.2.
+
+## 23. `raise_price` proposals target completed historical orders
+
+The raise-price proposal logic in `MarginWatchAgent._execute` (`app/agents/margin_watch.py`) constructs `PUT /admin/api/2024-01/orders/{order_id}.json` as the would-do API call. Shopify's order update endpoint does not support repricing completed orders; the correct action is updating the product variant price for future orders. The proposal's ₹ impact figure (`abs(margin)`) is the historical loss on a past order, not a forward-looking saving. The proposal is directionally correct (identifies which SKUs are underwater) but the action target and impact accounting are wrong. Fix: change the proposal to target the product/variant endpoint and compute impact as (expected future order volume) × (required margin restoration). Scope: requires linking orders to product variants via the product normalizer (not yet implemented, wont_fix #16).
+
+## 24. Shiprocket DESC pagination can silently skip records during concurrent writes
+
+`_paginate_orders` in `app/connectors/shiprocket/connector.py` uses `sort=DESC` (newest first) with offset-based pagination (`page=1, 2, ...`). If new orders are inserted between page fetches, all subsequent pages shift by one record, and the record at the page boundary is silently skipped. Since `from=since` limits to recent orders, this window is small in practice, but a busy merchant with many orders per second could see gaps. Fix: use `sort=ASC` (stable pagination direction) or paginate by last-seen order ID rather than offset. Scope: connector refactor.
+
+## 25. `refunded_order_count` in the refunds metric counts refund events, not distinct orders
+
+`catalog.py` computes `COUNT(DISTINCT ev.entity_id) AS refunded_order_count` for the `refunds` metric. For refund events, `ev.entity_id` is the refund entity (one per refund transaction), not the order entity. An order with two partial refunds counts as 2. The column name implies "distinct orders that were refunded." Fix: join to the `order_number` attribute to count distinct refunded orders. Scope: catalog SQL change.
+
+## 26. `_collect_tool_numbers` in the chat loop includes JSONB identifier strings
+
+`app/chat/loop.py` walks all tool result fields and adds any `float()`-parseable string to `tool_value_set`. This includes numeric-string identifiers like order numbers (`"1031"`), Shopify IDs, and postal codes. A model can then cite a number that matches an identifier (e.g. `<cite ref="prov:X">1031</cite>`) and pass the value-check even if 1031 was never a metric value in the tool results. Fix: only add numbers from fields known to be metric values (e.g., `amount`, `revenue`, `ad_spend`, `rto_rate`), not from JSONB attribute blobs. Scope: `_collect_tool_numbers` refactor.
+
+## 27. `tool_value_set` empty when model answers without tool calls
+
+The citation validator skips numeric value verification when `tool_value_set` is empty (`if not ref_unresolvable and tool_value_set and value.strip()`). If the model produces a cited answer in a turn where it made no tool calls (e.g., answering from conversation history), no value check runs. A model that cites a real provenance ID with a fabricated number passes the validator in this scenario. Fix: treat an empty `tool_value_set` on a turn that contains citations as a validation failure (no tool data to verify against), not a pass. Scope: validator + loop interaction design change.
+
+## 28. Multi-number unverified cite values may get partially double-annotated
+
+When step 1 of `validate_and_clean` marks a cite tag unresolvable, it replaces `<cite ref="X">VALUE</cite>` with `VALUE *(unverified)*`. If VALUE contains multiple numbers (e.g. `"₹31,814 (was ₹99,999)"`), only the last number is immediately followed by `*(unverified)*`. Step 2's bare-number scan checks `cleaned[m.end():m.end()+20]` for `*(unverified)*`; the first number's lookahead sees `(was ₹*(uncited)*) *(un...` — which starts with `)`, not `\s*\*` — and does not match, so it also gets stripped to `*(uncited)*`. The output becomes `₹*(uncited)* (was ₹*(uncited)*) *(unverified)*`. This is cosmetically wrong (double annotation, wrong marker on first number) but not a security issue — both numbers are still marked as unverified/uncited. Fix: track unverified span boundaries during step 1 and add them to excluded_spans in step 2. Scope: validator refactor.
+
+## 29. ingest_cursors RLS policy has no WITH CHECK — write-side unfiltered
+
+The RLS policy added to `ingest_cursors` in `app/warehouse/migrations/create_cursors.py` has only a `USING` clause. In Postgres, `USING` governs SELECT/UPDATE/DELETE row visibility; INSERT rows are governed by `WITH CHECK`. Without `WITH CHECK`, `d2c_app` can insert cursor rows with any `merchant_id` regardless of `app.current_merchant`. In practice the ingest runner is a trusted server-side process that correctly sets the GUC before writing, so this is defense-in-depth rather than an active exploit path. Fix: add `WITH CHECK (merchant_id = current_setting('app.current_merchant', true))` to the policy. Same pattern applies to other tables' RLS policies. Scope: migration refactor; consistent with the rest of the codebase (other tables also lack WITH CHECK).

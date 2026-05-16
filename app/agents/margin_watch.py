@@ -99,33 +99,36 @@ class MarginWatchAgent(BaseAgent):
 
         worst = sorted_couriers[0]
         best = sorted_couriers[-1] if len(sorted_couriers) > 1 else None
-        rto_rate = float(worst.get("rto_rate") or 0)
+        if best is None:
+            return
+        worst_rate = float(worst.get("rto_rate") or 0)
         rto_count = int(worst.get("rto_count") or 0)
+        total_ships = float(worst.get("total_shipments") or 0)
         courier = worst.get("courier", "unknown")
 
-        # Estimate impact: each RTO costs rto_unit_cost_inr (config) in reverse logistics + lost COD
-        est_impact = rto_count * settings.rto_unit_cost_inr
+        best_rate = float(best.get("rto_rate") or 0)
+        best_name = best.get("courier", "auto")
 
-        self.log(f"Courier '{courier}' has RTO rate {rto_rate:.1%} ({rto_count} RTOs).")
+        # Differential impact: switching worst→best saves (worst_rate - best_rate) RTOs per shipment
+        est_impact = total_ships * (worst_rate - best_rate) * settings.rto_unit_cost_inr
+
+        self.log(f"Courier '{courier}' has RTO rate {worst_rate:.1%} ({rto_count} RTOs).")
 
         self.emit_proposal(Proposal(
             action_type="switch_courier",
             entity_key=f"courier:{courier}",
             expected_inr_impact=est_impact,
             reasoning=(
-                f"Courier '{courier}' has an RTO rate of {rto_rate:.1%} "
-                f"({rto_count} returns in 30 days). "
-                + (
-                    f"Switching to '{best.get('courier')}' "
-                    f"(RTO rate {float(best.get('rto_rate') or 0):.1%}) "
-                    f"could save ~₹{est_impact:,.0f}/month." if best else ""
-                )
+                f"Switching from '{courier}' (RTO rate {worst_rate:.1%}) to '{best_name}' "
+                f"(RTO rate {best_rate:.1%}) on {int(total_ships)} shipments could save "
+                f"~₹{est_impact:,.0f} "
+                f"({worst_rate:.1%} − {best_rate:.1%} × ₹{settings.rto_unit_cost_inr:.0f}/RTO)."
             ),
             provenance_ids=result.provenance_ids[:5],
             would_do_api_call={
                 "connector": "shiprocket",
                 "action": "update_courier_preference",
-                "body": {"preferred_courier": best.get("courier") if best else "auto"},
+                "body": {"preferred_courier": best.get("courier", "auto")},
                 "NOT_SENT": True,
             },
         ))
@@ -164,8 +167,10 @@ class MarginWatchAgent(BaseAgent):
                 provenance_ids=(spend_result.provenance_ids + revenue_result.provenance_ids)[:5],
                 would_do_api_call={
                     "connector": "meta_ads",
-                    "endpoint": "POST /{ad-set-id}",
-                    "body": {"status": "PAUSED"},
+                    "note": (
+                        f"Pause bottom {pause_fraction:.0%} of campaigns by spend — "
+                        "each requires a separate POST /{ad-set-id} with {\"status\": \"PAUSED\"}"
+                    ),
                     "NOT_SENT": True,
                 },
             ))

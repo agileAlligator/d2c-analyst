@@ -297,3 +297,35 @@ The `compare(period_a, period_b)` tool accepts values from `["7d","14d","30d","9
 ## 47. `BaseConnector._post` is dead code
 
 `app/connectors/base.py` defines `_post(url, ...)` but no connector ever calls it — Shopify, Meta Ads, and Shiprocket are all read-only during ingestion. The method has correct implementation but adds surface area that could be misused (e.g., accidentally writing to a live API during ingest). Fix: remove unless a write-back connector is added. Deferred: no active caller; safe to leave until a POST-using connector is needed.
+
+## 48. `compare()` tool sums non-additive metrics producing nonsense aggregates
+
+`app/chat/tools.py:_compare._total` sums per-group metric values to produce an overall total: `sum(float(r.get(value_col, 0) or 0) for r in rows)`. For additive metrics (revenue, ad_spend) this is correct. For ratio/average metrics — `average_order_value`, `cac`, `rto_rate` — summing per-group values is meaningless (sum of per-courier RTO rates ≠ overall RTO rate). The `compare` tool exposes this for any metric the catalog supports; a query like "compare AOV by courier between 7d and 30d" produces a wrong `delta` and `pct_change` that are cited with full provenance. Fix: disallow `group_by` with ratio/average metrics in `compare`, or document that `compare` is additive-only. Deferred: requires metric type metadata in the catalog.
+
+## 49. Normalizers abort entire batch on single malformed row
+
+`app/normalize/shopify_to_universal.py`, `meta_to_universal.py`, and `shiprocket_to_universal.py` process raw rows in a flat for-loop. A single `KeyError`, `ValueError`, or `Decimal` overflow propagates out of the loop and prevents `db.commit()` from running, rolling back all previously normalized rows in the same call. In practice, seed data is clean and this path does not fire. Fix: wrap each row in a SQLAlchemy savepoint (`db.begin_nested()`) with per-row rollback on exception. Deferred: savepoint per row adds overhead; acceptable as a production v2 concern.
+
+## 50. DateTime columns store naive timestamps; time-window metrics are UTC-dependent
+
+`app/warehouse/models.py` defines all DateTime columns as `DateTime(timezone=False)` (naive). Normalizers pass tz-aware UTC datetimes, which SQLAlchemy silently strips to naive UTC. Metric SQL compares `ev.occurred_at >= NOW() - INTERVAL '7d'` where `NOW()` returns TIMESTAMPTZ. On a Postgres instance configured for UTC (the Docker default), the implicit cast is safe. On a non-UTC Postgres, every time-window metric miscounts by the local UTC offset. Fix: `DateTime(timezone=True)` on all columns. Deferred: schema migration needed; demo setup uses UTC Docker Postgres where behavior is correct.
+
+## 51. `Retry-After` HTTP-date format crashes connector retry delay
+
+`app/connectors/base.py:_get` parses `Retry-After` with `float(resp.headers.get("Retry-After", 5))`. RFC 7231 allows both a delay-seconds integer (`Retry-After: 60`) and an HTTP-date (`Retry-After: Wed, 21 Oct 2026 07:28:00 GMT`). The latter causes `ValueError` from `float()`, which is caught by tenacity and retried without honoring the actual wait time. In practice, major APIs (Shopify, Meta, Shiprocket) send delta-seconds form. Fix: parse both forms (delta-seconds and HTTP-date diff from `datetime.now()`). Deferred: low practical risk; tenacity still retries correctly, just without the preferred delay.
+
+## 52. `rto_rate` metric provenance cites all shipments, not just RTOs
+
+`app/warehouse/metrics/catalog.py:155-156` ARRAY_AGGs all shipment entity IDs into `event_ids` and cites the raw records for every shipment. When a user sees "RTO rate = 12%", the cited provenance shows all 100 shipment payloads rather than just the 12 RTO'd ones. The numeric claim is correct; only the citation breadth is misleading. Fix: also collect entity_ids for RTO events specifically and cite those, or filter `event_ids` to the rto-events subset. Deferred: provenance structure change; the numeric value is accurate.
+
+## 53. `margin_watch` blended ROAS trigger uses all-channel revenue
+
+`app/agents/margin_watch.py:153-163` computes `blended_roas = total_all_channel_revenue / ad_spend`. If organic or direct revenue is high, ROAS looks healthy even when paid campaigns are losing money. The adset pause proposal fires when `blended_roas < 2.0` — meaning it may fail to fire when paid ROAS is terrible but organic masks it, or may fire incorrectly when non-paid revenue dips seasonally. Fix: attribute revenue to paid sources via UTM or discount-code matching before computing paid ROAS. Deferred: attribution requires UTM data not in the current schema.
+
+## 54. Shiprocket pagination exits early if server caps `per_page` below requested
+
+`app/connectors/shiprocket/connector.py:_pull_shipments` terminates when `len(items) < params["per_page"]` (100). If Shiprocket server-side caps `per_page` at, say, 50, every page returns <100 → connector stops after page 1, silently missing all but the first page. The test `test_pagination_stops_when_partial_page` confirms this is the intended contract (partial page = last page). In practice, Shiprocket honors `per_page=100`. A server-cap scenario would require reading `meta.total_pages` from the response. Deferred: no observed cap; the partial-page termination is the documented pagination contract.
+
+## 56. `make seed` omits `[dev]` extras; `make test` fails on seed-then-test path
+
+`Makefile:seed` runs `pip install -e . -q` without `[dev]`, so pytest and ruff are not installed. A developer who runs `make seed && make test` on a fresh clone (without `make bootstrap`) hits a `command not found: pytest` error. The documented entry point is `make bootstrap` which does install dev extras. Fix: add `[dev]` to the seed target. Deferred: `make seed` is intentionally lightweight; the fix would add ~30s of dev-dep installation to a path that doesn't need them.

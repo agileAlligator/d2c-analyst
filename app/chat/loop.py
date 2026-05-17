@@ -124,7 +124,7 @@ def _run_openai(question, db, merchant_id, history, decision: RoutingDecision):
 
     # Cascade only on citation failures, not infrastructure failures (max_turns, empty_response,
     # tool_parse_error, finish:length). Infrastructure failures won't be fixed by a smarter model.
-    _INFRA_PREFIXES = ("max_turns", "empty_response", "tool_parse_error", "finish:", "max_retries")
+    _INFRA_PREFIXES = ("max_turns", "empty_response", "tool_parse_error", "finish:")
     infra_failure = any(i.startswith(_INFRA_PREFIXES) for i in (result["issues"] or []))
     if not result["all_citations_valid"] and not infra_failure and not decision.escalated and decision.tier == "cheap":
         failure_summary = "; ".join(result["issues"][:2])

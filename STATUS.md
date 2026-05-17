@@ -1,7 +1,7 @@
 # Project Status
 
 **Last updated:** 2026-05-17
-**Phase:** Complete — v0.1.12 (final stress test + push)
+**Phase:** Complete — v0.1.14 (adversarial hardening rounds 3–4 of 5)
 
 ## What's built
 
@@ -213,6 +213,22 @@ Multi-round parallel Opus audit → Sonnet fix → Opus review loop. Fixes appli
 - **Test count** — updated 312 → 325 in README.
 - **STATUS eval tier claim** — "citation coverage ≥80%" replaced with accurate thresholds (non-adversarial 100%, adversarial ≥66%, accuracy ≥60%) to match `test_eval_suite.py` assertions.
 - **2 new wont_fix entries** (#46–47): ingest cursor advances on data never written; `_post` dead method on `BaseConnector`.
+
+## v0.1.14 adversarial hardening (round 4 of 5)
+
+- **CM NULL phantom row** — `contribution_margin` revenue CTE grouped on `order_number` without filtering NULL values; refunds normalized before their parent order collapsed into a synthetic NULL-key row with deeply negative CM near the top of results. Added `AND en.attributes->>'order_number' IS NOT NULL` to revenue CTE.
+- **Meta `date_start` full-timestamp parse failure** — `date + "T00:00:00+00:00"` produced unparseable string when `date_start` was already an ISO timestamp; added `.split("T")[0]` guard to take date-part only, preventing silent ad-spend event drops.
+- **DuckDB `sandboxed_sql` merchant_id injection** — `quoted_mid` was single-quote-escaped but the `merchant_id` parameter itself had no format validation; added `_MERCHANT_ID_RE` regex check (`^[a-zA-Z0-9_-]{1,64}$`) at function entry.
+- **Shiprocket pagination exits early on server-capped `per_page`** — `if len(items) < per_page: break` exited after page 1 when Shiprocket capped items at < 100; removed partial-page check (empty-page break already handles termination correctly).
+- **Runner unknown resource_type silent drop** — unmapped `resource_type` was silently dropped with no log; added `logger.warning` so operators can detect schema drift without DB-side investigation.
+- **Runner connector list duplication** — `["shopify", "meta_ads", "shiprocket"]` was hardcoded twice; extracted to `_CONNECTOR_CLS` dict and derived `--connector choices` from it.
+- **`config.py` default ports** — default `DATABASE_URL` and `DATABASE_URL_ANALYTICS` used port 5432; changed to 5434 to match `docker-compose.yml` (without `.env`, direct `python3 scripts/...` calls hit wrong port).
+- **Dockerfile `COPY` before `pip install`** — `pip install -e .` ran before source was copied; editable install produced empty wheel; fixed by moving `COPY . .` before the pip step.
+- **`_INFRA_PREFIXES` dead entry** — `"max_retries"` was removed from `_INFRA_PREFIXES` (matched `_timeout_result(reason="max_retries_exceeded")` which no longer exists after round-3 removal of unreachable return).
+- **`golden_questions.py` adversarial delivery-time echo** — "delivery time" in the acceptable-phrases list was in the question itself; any answer echoing the question phrase would pass; removed the echo phrase.
+- **`golden_questions.py` total-orders semantic check** — added `_mentions_any("order", "total")` alongside the number range so answers about unrelated numbers (e.g. revenue) can't satisfy the assertion.
+- **pyproject.toml version** — bumped 0.1.12 → 0.1.13.
+- **7 new wont_fix entries** (#48–54): `compare()` non-additive sums, normalizer per-row savepoints, naive DateTime columns, Retry-After HTTP-date form, rto_rate over-broad provenance, margin_watch organic ROAS conflation, `make seed` dev-dep gap.
 
 ## Known limitations
 

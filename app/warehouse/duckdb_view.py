@@ -67,6 +67,9 @@ def _coerce_id_list(value) -> list[str]:
     return [str(value)]
 
 
+_MERCHANT_ID_RE = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
+
+
 def sandboxed_sql(query: str, merchant_id: str) -> tuple[list[dict], list[str]]:
     """Execute a SELECT-only query against the warehouse. Returns (rows, provenance_ids).
 
@@ -75,6 +78,8 @@ def sandboxed_sql(query: str, merchant_id: str) -> tuple[list[dict], list[str]]:
     explicit merchant_id predicates. Queries referencing :merchant_id are also supported
     (the placeholder is replaced with the literal value before execution).
     """
+    if not _MERCHANT_ID_RE.match(merchant_id):
+        raise ValueError(f"Invalid merchant_id: {merchant_id!r}")
     _validate_query(query)
     quoted_mid = merchant_id.replace("'", "''")
     # Replace :merchant_id placeholder if the query uses it explicitly

@@ -186,6 +186,7 @@ METRIC_SQL: dict[str, str] = {
             JOIN entities en ON ev.entity_id = en.entity_id
             WHERE ev.event_type IN ('order_revenue', 'refund')
               AND ev.merchant_id = :merchant_id
+              AND en.attributes->>'order_number' IS NOT NULL
               {time_filter}
             GROUP BY en.attributes->>'order_number'
         ),

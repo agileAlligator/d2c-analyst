@@ -139,7 +139,10 @@ def _upsert_insight(db: Session, merchant_id: str, raw: RawMetaInsight):
     prov_record(db, merchant_id, "entities", str(entity_id), "raw_meta_insights", raw.source_record_id, TRANSFORM_ID)
 
     spend = Decimal(str(p.get("spend") or "0"))
-    occurred_at = _parse_dt(date + "T00:00:00+00:00") if date else None
+    # Take only the date portion — Meta may return full ISO timestamps for date_start;
+    # concatenating "T00:00:00+00:00" to an already-timestamped string would break parse.
+    date_only = date.split("T")[0] if date else None
+    occurred_at = _parse_dt(date_only + "T00:00:00+00:00") if date_only else None
 
     if occurred_at and spend > 0:
         # Purchase COUNT comes from actions[].value; purchase REVENUE in ₹ comes

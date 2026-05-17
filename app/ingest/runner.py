@@ -41,12 +41,15 @@ RAW_MODEL_MAP: dict[tuple[str, str], tuple[type, str]] = {
 }
 
 
+_CONNECTOR_CLS: dict[str, type] = {
+    "shopify": ShopifyConnector,
+    "meta_ads": MetaAdsConnector,
+    "shiprocket": ShiprocketConnector,
+}
+
+
 def run_connector(merchant_id: str, connector_name: str, db: Session) -> int:
-    connector_cls = {
-        "shopify": ShopifyConnector,
-        "meta_ads": MetaAdsConnector,
-        "shiprocket": ShiprocketConnector,
-    }[connector_name]
+    connector_cls = _CONNECTOR_CLS[connector_name]
 
     set_merchant(db, merchant_id)
     connector = connector_cls()
@@ -65,6 +68,10 @@ def run_connector(merchant_id: str, connector_name: str, db: Session) -> int:
                 for record in connector.pull(resource, since=cursor):
                     entry = RAW_MODEL_MAP.get((connector_name, record.resource_type))
                     if entry is None:
+                        logger.warning(
+                            "[%s] %s: no model mapped for resource_type=%r, skipping",
+                            merchant_id, connector_name, record.resource_type,
+                        )
                         continue
                     model_cls, constraint_name = entry
 
@@ -116,20 +123,19 @@ def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     parser = argparse.ArgumentParser()
     parser.add_argument("--merchant", default="demo")
-    parser.add_argument("--connector", choices=["shopify", "meta_ads", "shiprocket"])
+    parser.add_argument("--connector", choices=list(_CONNECTOR_CLS))
     parser.add_argument("--all", action="store_true", dest="all_connectors")
     args = parser.parse_args()
 
     if not args.all_connectors and not args.connector:
         parser.error("Specify --connector <name> or --all")
 
-    connectors = ["shopify", "meta_ads", "shiprocket"] if args.all_connectors else [args.connector]
+    connectors = list(_CONNECTOR_CLS) if args.all_connectors else [args.connector]
 
     with SessionLocal() as db:
         for c in connectors:
-            if c:
-                n = run_connector(args.merchant, c, db)
-                logger.info("Total ingested from %s: %d", c, n)
+            n = run_connector(args.merchant, c, db)
+            logger.info("Total ingested from %s: %d", c, n)
 
 
 if __name__ == "__main__":

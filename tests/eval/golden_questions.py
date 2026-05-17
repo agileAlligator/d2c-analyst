@@ -185,8 +185,9 @@ GOLDEN_QUESTIONS: list[GoldenQuestion] = [
         question="How many orders do we have in total?",
         description="Entity count — demo has 80 orders, used for isolation check",
         answer_checks=[
-            # demo has 80 orders; require a multi-digit count (not just any digit)
+            # demo has 80 orders; require a multi-digit count AND that the answer is about orders
             _number_in_range(10, 500),
+            _mentions_any("order", "total"),
         ],
     ),
     # ── Adversarial — boundary tests (documented failures) ───────────────
@@ -195,13 +196,13 @@ GOLDEN_QUESTIONS: list[GoldenQuestion] = [
         description="ADVERSARIAL: no delivery timestamps in schema — must say no data, not hallucinate",
         expected_cites=False,
         answer_checks=[
-            # System should admit it lacks delivery-time data, not invent a duration
+            # System should admit it lacks delivery-time data, not invent a duration.
+            # "delivery time" removed — it appears in the question and any echo would pass.
             _mentions_any(
                 "no data",
                 "not available",
                 "cannot",
                 "don't have",
-                "delivery time",
                 "not tracked",
                 "unavailable",
                 "unable",

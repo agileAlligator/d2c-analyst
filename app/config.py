@@ -6,7 +6,7 @@ class Settings(BaseSettings):
 
     # Runtime app-role URL (NOSUPERUSER NOBYPASSRLS) — used by the SQLAlchemy
     # session path (API, agent, normalizers).  RLS enforcement is in effect here.
-    database_url: str = "postgresql://d2c_app:d2c_app@localhost:5432/d2c"
+    database_url: str = "postgresql://d2c_app:d2c_app@localhost:5434/d2c"
 
     # Read-only analytical URL for DuckDB sandbox queries.  DuckDB creates its
     # own Postgres connections and cannot set the app.current_merchant GUC, so
@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     # by the view-layer WHERE clause injected in sandboxed_sql().  Uses the
     # bootstrap superuser so RLS is bypassed rather than silently returning zero
     # rows — the WHERE clause is the enforcement mechanism here.
-    database_url_analytics: str = "postgresql://d2c:d2c@localhost:5432/d2c"
+    database_url_analytics: str = "postgresql://d2c:d2c@localhost:5434/d2c"
 
     openai_api_key: str = ""
 

@@ -177,7 +177,7 @@ Multi-round parallel Opus audit → Sonnet fix → Opus review loop. Fixes appli
 ## Known limitations
 
 - **Single-digit numbers bypass citation check:** the bare-number regex requires ≥2 digits (`\d{2,}`); "3 orders" would not be caught if uncited. Low practical impact (single counts are rarely the sole datapoint in an answer) but the 100% citation claim has this caveat.
-- **`contribution_margin` excludes ad cost:** CM = revenue − shipping − RTO only. Ad cost attribution per order requires UTM/click-id joining that the schema does not model. SKUs profitable on logistics costs but unprofitable on blended CAC will not be flagged by Margin Watch. The `_propose_adset_pause` (ROAS threshold) partially compensates at the campaign level.
+- **`contribution_margin` excludes ad cost:** CM = revenue − shipping − RTO only. Ad cost attribution per order requires UTM/click-id joining that the schema does not model. Orders profitable on logistics costs but unprofitable on blended CAC will not be flagged by Margin Watch. The `_propose_adset_pause` (ROAS threshold) partially compensates at the campaign level.
 - **Shiprocket token never auto-refreshes:** token expires ~10 days; ingest will fail with 401 until manually rotated in `.env`. Acceptable for demo; production needs a refresh-token flow.
 - **No per-API-call `updated_at` comparison in ingest:** on conflict, the original payload is preserved unconditionally. If an order is genuinely updated at source, the warehouse will not reflect the correction until the raw record is manually purged.
 

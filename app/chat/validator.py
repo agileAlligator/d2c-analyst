@@ -169,9 +169,9 @@ def validate_and_clean(
         if not ref_unresolvable and tool_value_set and value.strip():
             all_nums = _extract_all_numbers(value)
             if all_nums:
-                # At least one number in the cite value must match a tool result.
-                # Checking all numbers catches cases like <cite ref="id">₹31,814 (was ₹99,999)</cite>
-                # where only the first number was previously verified.
+                # Every number in the cite value must match a tool result.
+                # Catches fabricated context like <cite ref="id">₹31,814 (was ₹99,999)</cite>
+                # where 99,999 is hallucinated but 31,814 resolves.
                 value_ok = all(
                     any(
                         abs(num - v) <= max(0.01, abs(num) * 0.01)

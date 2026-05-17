@@ -214,9 +214,9 @@ The RLS policy added to `ingest_cursors` in `app/warehouse/migrations/create_cur
 
 `app/normalize/meta_to_universal.py` uses `next(a for a in actions if a["action_type"]=="purchase")` which takes the first `purchase` entry from Meta's `actions[]` array. Meta may return multiple `purchase` entries for different attribution windows (e.g., `1d_click`, `7d_click`, `7d_click_1d_view`). The selected window depends on the API's return order, which is not guaranteed. Fix: explicitly select a canonical attribution window (e.g., prefer `7d_click` or the default Meta attribution window) rather than taking the first. Scope: normalizer update; requires an attribution window policy decision.
 
-## 31. Validator value-check uses `any` — secondary numbers in multi-number cites are not independently verified
+## 31. ~~Validator value-check uses `any`~~ — FIXED in v0.1.10
 
-`validate_and_clean` checks that `any` number in a multi-number cite value matches a tool result. `<cite>₹31,814 (was ₹99,999)</cite>` passes if only 31,814 is in `tool_value_set`, even if 99,999 is hallucinated context. The alternative (`all` must match) would reject valid cites that include historical comparison values that aren't in the current turn's tool results. Current behavior is intentional: the primary cited value must be grounded, but explanatory context numbers (e.g., prior-period comparisons) are not independently verified. Fix: expose a strict mode requiring all numbers to match. Scope: validator interface change.
+`validate_and_clean` now uses `all(any(...) for num in all_nums)` — every number inside a cite's display value must match a tool result. Fixed at `app/chat/validator.py:175-182`. Entry kept for changelog traceability; no longer a known limitation.
 
 ## 32. Revenue group_by=date buckets refund events by refund date, not order date
 

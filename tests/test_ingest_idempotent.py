@@ -1,4 +1,5 @@
 """Verify ingestion is idempotent — running twice produces no duplicates."""
+
 import os
 
 import pytest
@@ -61,13 +62,13 @@ def test_double_ingest_yields_single_row():
                 merchant_id="test_idempotent",
                 source_record_id="order:99999",
                 payload=original_payload,
-                fetched_at=datetime.datetime.now(datetime.timezone.utc),
+                fetched_at=datetime.datetime.now(datetime.UTC),
                 run_id="run_test_idempotent_1",
             )
             .on_conflict_do_update(
                 constraint="uq_raw_shopify_orders",
                 set_={
-                    "fetched_at": datetime.datetime.now(datetime.timezone.utc),
+                    "fetched_at": datetime.datetime.now(datetime.UTC),
                     "run_id": "run_test_idempotent_1",
                 },
             )
@@ -82,13 +83,13 @@ def test_double_ingest_yields_single_row():
                 merchant_id="test_idempotent",
                 source_record_id="order:99999",
                 payload=second_payload,
-                fetched_at=datetime.datetime.now(datetime.timezone.utc),
+                fetched_at=datetime.datetime.now(datetime.UTC),
                 run_id="run_test_idempotent_2",
             )
             .on_conflict_do_update(
                 constraint="uq_raw_shopify_orders",
                 set_={
-                    "fetched_at": datetime.datetime.now(datetime.timezone.utc),
+                    "fetched_at": datetime.datetime.now(datetime.UTC),
                     "run_id": "run_test_idempotent_2",
                 },
             )
@@ -117,9 +118,7 @@ def test_double_ingest_yields_single_row():
             f"Original payload was overwritten: got total_price={row.payload.get('total_price')!r}, "
             "expected '100.00'. Runner must preserve the first-fetched payload."
         )
-        assert row.run_id == "run_test_idempotent_2", (
-            "run_id should be updated to the latest run on conflict"
-        )
+        assert row.run_id == "run_test_idempotent_2", "run_id should be updated to the latest run on conflict"
 
         # Cleanup
         db.query(RawShopifyOrder).filter_by(

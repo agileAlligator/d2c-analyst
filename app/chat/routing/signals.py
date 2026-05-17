@@ -1,19 +1,12 @@
 """Feature extraction for routing decisions."""
+
 import re
 
 # Keywords that predict multi-step, derived-metric, or causal queries
-_COMPARISON_RE = re.compile(
-    r"\b(vs|versus|compare|against|between|difference|delta|change|trend)\b", re.I
-)
-_DERIVED_METRIC_RE = re.compile(
-    r"\b(roas|cac|ltv|margin|contribution|payback|blended|breakeven|roi)\b", re.I
-)
-_CAUSAL_RE = re.compile(
-    r"\b(why|explain|driver|cause|breakdown|attribute|negative|worse|better|impact)\b", re.I
-)
-_SQL_SIGNAL_RE = re.compile(
-    r"\b(top\s+\d|rank|order by|highest|lowest|worst|best|list|show me all)\b", re.I
-)
+_COMPARISON_RE = re.compile(r"\b(vs|versus|compare|against|between|difference|delta|change|trend)\b", re.I)
+_DERIVED_METRIC_RE = re.compile(r"\b(roas|cac|ltv|margin|contribution|payback|blended|breakeven|roi)\b", re.I)
+_CAUSAL_RE = re.compile(r"\b(why|explain|driver|cause|breakdown|attribute|negative|worse|better|impact)\b", re.I)
+_SQL_SIGNAL_RE = re.compile(r"\b(top\s+\d|rank|order by|highest|lowest|worst|best|list|show me all)\b", re.I)
 _DATE_EXPR_RE = re.compile(
     r"\b(\d+\s*days?|last\s+week|last\s+month|this\s+week|yesterday|ytd|mtd|30d|7d|14d|90d)\b", re.I
 )

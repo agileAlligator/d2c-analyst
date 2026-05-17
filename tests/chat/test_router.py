@@ -1,4 +1,5 @@
 """Unit tests for HeuristicRouter — offline, no API calls."""
+
 import pytest
 
 from app.chat.routing import HeuristicRouter
@@ -11,6 +12,7 @@ def router():
 
 
 # ── Default (simple queries → cheap) ─────────────────────────────────────────
+
 
 def test_simple_revenue_query_routes_cheap(router):
     d = router.route("What was total revenue last 30 days?", [], 0)
@@ -33,6 +35,7 @@ def test_single_metric_lookup_routes_cheap(router):
 
 # ── Comparison signal ─────────────────────────────────────────────────────────
 
+
 def test_compare_keyword_routes_smart(router):
     d = router.route("Compare revenue between last 7 days and last 30 days.", [], 0)
     assert d.tier == "smart"
@@ -50,6 +53,7 @@ def test_delta_keyword_routes_smart(router):
 
 
 # ── Derived metric signal ─────────────────────────────────────────────────────
+
 
 def test_roas_routes_smart(router):
     d = router.route("What is our ROAS last 14 days?", [], 0)
@@ -69,6 +73,7 @@ def test_cac_in_full_sentence_routes_smart(router):
 
 # ── Causal signal ─────────────────────────────────────────────────────────────
 
+
 def test_why_routes_smart(router):
     d = router.route("Why is our ROAS down this week?", [], 0)
     assert d.tier == "smart"
@@ -80,6 +85,7 @@ def test_explain_routes_smart(router):
 
 
 # ── SQL / ranking signal ──────────────────────────────────────────────────────
+
 
 def test_top_n_routes_smart(router):
     d = router.route("Show me the top 5 orders by revenue.", [], 0)
@@ -93,6 +99,7 @@ def test_highest_routes_smart(router):
 
 # ── Multi-timerange signal ────────────────────────────────────────────────────
 
+
 def test_two_time_ranges_routes_smart(router):
     d = router.route("Revenue last 7 days vs last 30 days.", [], 0)
     assert d.tier == "smart"
@@ -105,12 +112,14 @@ def test_single_time_range_does_not_escalate(router):
 
 # ── Negative margin signal ────────────────────────────────────────────────────
 
+
 def test_negative_margin_routes_smart(router):
     d = router.route("Which orders had negative contribution margin?", [], 0)
     assert d.tier == "smart"
 
 
 # ── Deep turn signal ──────────────────────────────────────────────────────────
+
 
 def test_deep_turn_routes_smart(router):
     d = router.route("What about last month?", [], turn=3)
@@ -125,6 +134,7 @@ def test_early_turn_does_not_escalate(router):
 
 # ── Length signal ─────────────────────────────────────────────────────────────
 
+
 def test_long_query_routes_smart(router):
     long_q = "What " + "is " * 35 + "revenue?"
     d = router.route(long_q, [], 0)
@@ -133,6 +143,7 @@ def test_long_query_routes_smart(router):
 
 
 # ── Escalation ────────────────────────────────────────────────────────────────
+
 
 def test_escalate_upgrades_tier(router):
     cheap = router.route("Revenue last 30 days?", [], 0)

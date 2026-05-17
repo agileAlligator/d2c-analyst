@@ -5,6 +5,7 @@ Every tool in TOOL_DEFINITIONS is exercised against real seed data so that:
 - SQL tool connectivity is proven (regression for enable_external_access=false bug)
 - All dispatch paths are covered end-to-end
 """
+
 import os
 
 import pytest
@@ -18,6 +19,7 @@ MERCHANT = "demo"
 @pytest.fixture(scope="module")
 def db():
     from app.warehouse.db import SessionLocal
+
     with SessionLocal() as session:
         yield session
 
@@ -56,7 +58,9 @@ def test_query_metric_returns_data(db, metric_name, group_by, time_range):
 
     assert "error" not in result, f"query_metric({metric_name}) returned error: {result.get('error')}"
     assert "rows" in result, f"query_metric({metric_name}) missing 'rows' key"
-    assert len(result["rows"]) > 0, f"query_metric({metric_name}) returned zero rows — seed data missing or metric broken"
+    assert len(result["rows"]) > 0, (
+        f"query_metric({metric_name}) returned zero rows — seed data missing or metric broken"
+    )
     assert len(result.get("provenance_ids", [])) > 0, (
         f"query_metric({metric_name}) returned no provenance_ids — citation will fail"
     )
@@ -82,7 +86,9 @@ def test_refunds_metric_returns_positive_value_with_provenance(db):
         MERCHANT,
     )
     assert "error" not in result, f"query_metric(refunds) returned error: {result.get('error')}"
-    assert "rows" in result and len(result["rows"]) > 0, "query_metric(refunds) returned zero rows — no refund seed data"
+    assert "rows" in result and len(result["rows"]) > 0, (
+        "query_metric(refunds) returned zero rows — no refund seed data"
+    )
     refund_total = result["rows"][0].get("refunds")
     assert refund_total is not None, "refunds column missing from result rows"
     assert float(refund_total) > 0, f"refunds metric should be a positive gross total, got {refund_total}"
@@ -90,7 +96,8 @@ def test_refunds_metric_returns_positive_value_with_provenance(db):
 
 
 def test_orders_metric_is_time_windowed_and_cited(db):
-    """orders metric must return a positive integer count with provenance IDs, and the 90d window must be >= 30d window."""
+    """orders metric must return a positive integer count with provenance IDs,
+    and the 90d window must be >= 30d window."""
     from app.chat.tools import dispatch_tool
 
     result_30 = dispatch_tool("query_metric", {"metric_name": "orders", "time_range": "30d"}, db, MERCHANT)
@@ -103,7 +110,9 @@ def test_orders_metric_is_time_windowed_and_cited(db):
     count_90 = result_90["rows"][0].get("order_count")
 
     assert count_30 is not None and int(count_30) > 0, f"orders 30d should be positive, got {count_30}"
-    assert int(count_90) > int(count_30), f"Expected count_90 ({count_90}) > count_30 ({count_30}); time filter may not be applying correctly"
+    assert int(count_90) > int(count_30), (
+        f"Expected count_90 ({count_90}) > count_30 ({count_30}); time filter may not be applying correctly"
+    )
     assert len(result_30.get("provenance_ids", [])) > 0, "orders 30d must have provenance IDs"
 
 
@@ -145,6 +154,7 @@ def test_unknown_metric_returns_error(db):
 # ---------------------------------------------------------------------------
 # sql tool — proves DuckDB connectivity with realistic analytical queries
 # ---------------------------------------------------------------------------
+
 
 class TestSqlTool:
     def test_simple_select(self, db):
@@ -232,6 +242,7 @@ def test_list_entities(db, entity_type):
 # compare tool
 # ---------------------------------------------------------------------------
 
+
 def test_compare_revenue_7d_vs_30d(db):
     from app.chat.tools import dispatch_tool
 
@@ -281,10 +292,12 @@ def test_compare_returns_distinct_provenance_ids(db):
 # get_raw tool
 # ---------------------------------------------------------------------------
 
+
 def test_get_raw_resolves_real_record(db):
     """get_raw must return the source payload for a known provenance_id."""
-    from app.chat.tools import dispatch_tool
     from sqlalchemy import text
+
+    from app.chat.tools import dispatch_tool
 
     row = db.execute(
         text("SELECT source_record_id FROM raw_shopify_orders WHERE merchant_id = :m LIMIT 1"),
@@ -308,6 +321,7 @@ def test_get_raw_nonexistent_returns_error(db):
 def test_query_metric_revenue_by_campaign_raises_clear_error(db):
     """revenue grouped by campaign must raise — orders have no campaign attribution."""
     from app.chat.tools import dispatch_tool
+
     result = dispatch_tool(
         "query_metric",
         {"metric_name": "revenue", "group_by": "campaign", "time_range": "30d"},
@@ -316,14 +330,13 @@ def test_query_metric_revenue_by_campaign_raises_clear_error(db):
     )
     assert "error" in result, f"expected an error for revenue+campaign, got rows: {result}"
     err = result["error"].lower()
-    assert "campaign" in err and "revenue" in err, (
-        f"error message missing key terms: {result['error']!r}"
-    )
+    assert "campaign" in err and "revenue" in err, f"error message missing key terms: {result['error']!r}"
 
 
 def test_query_metric_revenue_by_courier_raises_clear_error(db):
     """revenue grouped by courier must raise — order entities have no courier attribute."""
     from app.chat.tools import dispatch_tool
+
     result = dispatch_tool(
         "query_metric",
         {"metric_name": "revenue", "group_by": "courier", "time_range": "30d"},
@@ -332,22 +345,19 @@ def test_query_metric_revenue_by_courier_raises_clear_error(db):
     )
     assert "error" in result, f"expected an error for revenue+courier, got rows: {result}"
     err = result["error"].lower()
-    assert "courier" in err and "revenue" in err, (
-        f"error message missing key terms: {result['error']!r}"
-    )
+    assert "courier" in err and "revenue" in err, f"error message missing key terms: {result['error']!r}"
 
 
 def test_write_note_persists_and_appends(db):
     """write_note must succeed and the note must appear in entities.attributes.notes."""
-    from app.chat.tools import dispatch_tool
-    from sqlalchemy import text as sql_text
     import json
 
+    from sqlalchemy import text as sql_text
+
+    from app.chat.tools import dispatch_tool
+
     row = db.execute(
-        sql_text(
-            "SELECT natural_key FROM entities "
-            "WHERE merchant_id = :m AND entity_type = 'order' LIMIT 1"
-        ),
+        sql_text("SELECT natural_key FROM entities WHERE merchant_id = :m AND entity_type = 'order' LIMIT 1"),
         {"m": MERCHANT},
     ).fetchone()
     if row is None:
@@ -364,14 +374,9 @@ def test_write_note_persists_and_appends(db):
     assert result.get("status") == "saved"
 
     notes_raw = db.execute(
-        sql_text(
-            "SELECT attributes->'notes' FROM entities "
-            "WHERE merchant_id = :m AND natural_key = :k"
-        ),
+        sql_text("SELECT attributes->'notes' FROM entities WHERE merchant_id = :m AND natural_key = :k"),
         {"m": MERCHANT, "k": natural_key},
     ).scalar()
     assert notes_raw is not None
     notes = notes_raw if isinstance(notes_raw, list) else json.loads(notes_raw)
-    assert any("follow up with carrier" == n.get("text") for n in notes), (
-        f"note not persisted; got: {notes}"
-    )
+    assert any("follow up with carrier" == n.get("text") for n in notes), f"note not persisted; got: {notes}"

@@ -1,10 +1,10 @@
 """Tests for duckdb_view query validation and merchant isolation."""
+
 import os
 
 import pytest
 
 from app.warehouse.duckdb_view import _FORBIDDEN_TOKENS, _validate_query, sandboxed_sql
-
 
 # ---------------------------------------------------------------------------
 # _coerce_id_list  (pure unit tests — no DB required)
@@ -16,36 +16,47 @@ class TestCoerceIdList:
 
     def test_none_returns_empty(self):
         from app.warehouse.duckdb_view import _coerce_id_list
+
         assert _coerce_id_list(None) == []
 
     def test_empty_list_returns_empty(self):
         from app.warehouse.duckdb_view import _coerce_id_list
+
         assert _coerce_id_list([]) == []
 
     def test_python_list_passthrough(self):
         from app.warehouse.duckdb_view import _coerce_id_list
+
         assert _coerce_id_list(["a", "b"]) == ["a", "b"]
 
     def test_multi_element_numpy_array_does_not_raise(self):
         import numpy as np
+
         from app.warehouse.duckdb_view import _coerce_id_list
+
         arr = np.array(["raw-1", "raw-2", "raw-3"], dtype=object)
         result = _coerce_id_list(arr)
         assert result == ["raw-1", "raw-2", "raw-3"]
 
     def test_empty_numpy_array_returns_empty(self):
         import numpy as np
+
         from app.warehouse.duckdb_view import _coerce_id_list
+
         assert _coerce_id_list(np.array([], dtype=object)) == []
 
     def test_single_element_numpy_array(self):
         import numpy as np
+
         from app.warehouse.duckdb_view import _coerce_id_list
+
         assert _coerce_id_list(np.array(["only"], dtype=object)) == ["only"]
 
     def test_numpy_array_with_none_filtered(self):
         import numpy as np
+
         from app.warehouse.duckdb_view import _coerce_id_list
+
         arr = np.array(["a", None, "b"], dtype=object)
         assert _coerce_id_list(arr) == ["a", "b"]
 

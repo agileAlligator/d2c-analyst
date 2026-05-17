@@ -4,6 +4,7 @@ Usage:  python scripts/bench_ingest.py [--merchants N] [--orders-per-merchant M]
 Default: 10 merchants × 20 orders = 200 rows.
 Output:  JSON line: {"rows": N, "elapsed_seconds": X, "rows_per_second": Y}
 """
+
 import sys
 from pathlib import Path
 
@@ -19,7 +20,7 @@ from itertools import groupby
 from sqlalchemy import text
 
 from app.warehouse.db import SessionLocal, engine, set_merchant
-from app.warehouse.models import RawShopifyOrder, Base
+from app.warehouse.models import Base, RawShopifyOrder
 
 
 def make_payload(i: int) -> dict:

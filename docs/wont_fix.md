@@ -152,7 +152,7 @@ The `compare(metric, period_a, period_b)` tool generates synthetic IDs like `com
 
 ## 15. Wall-clock `NOW()` makes README ₹ figures time-bounded
 
-Metric queries use `NOW() - INTERVAL '...'` while seed data is anchored to BASE_DATE=2026-05-13. README figures (₹31,814 30d revenue, ROAS 1.45x, ₹4,233/month) are accurate only while the rolling window intersects the seeded date range. Past roughly 2026-07-13, the 30d window returns zero seed orders. Fix: a configurable `AS_OF_DATE` parameter in metric queries, or advance BASE_DATE before each submission demo. Scope: v0.2.
+Metric queries use `NOW() - INTERVAL '...'` while seed data is anchored to BASE_DATE=2026-05-17. README figures (₹31,814 30d revenue, ROAS 1.27x, ₹4,642/month) are accurate only while the rolling window intersects the seeded date range. Past roughly 2026-07-17, the 30d window returns zero seed orders. Fix: a configurable `AS_OF_DATE` parameter in metric queries, or advance BASE_DATE before each submission demo. Scope: v0.2.
 
 ## 16. `raw_shopify_products` and `raw_shopify_customers` have no downstream normalizer
 

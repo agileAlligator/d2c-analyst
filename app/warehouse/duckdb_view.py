@@ -1,4 +1,5 @@
 """DuckDB read-only analytical sandbox over Postgres data."""
+
 import logging
 import re
 
@@ -19,10 +20,7 @@ def get_duckdb_conn() -> duckdb.DuckDBPyConnection:
     conn = duckdb.connect(database=":memory:")
     conn.execute("INSTALL postgres; LOAD postgres;")
     p = _parse_url()
-    attach_str = (
-        f"dbname={p['db']} host={p['host']} port={p['port']} "
-        f"user={p['user']} password={p['pw']}"
-    )
+    attach_str = f"dbname={p['db']} host={p['host']} port={p['port']} user={p['user']} password={p['pw']}"
     conn.execute(f"ATTACH '{attach_str}' AS pg (TYPE POSTGRES, READ_ONLY)")
     # Disable DuckDB's local filesystem so path-literal replacement scans
     # (SELECT * FROM 'file.csv') cannot read host files.  The Postgres ATTACH
@@ -61,6 +59,7 @@ def _coerce_id_list(value) -> list[str]:
     # pandas NA / float nan
     try:
         import pandas as pd
+
         if pd.isna(value):
             return []
     except (TypeError, ValueError, ImportError):
@@ -87,8 +86,7 @@ def sandboxed_sql(query: str, merchant_id: str) -> tuple[list[dict], list[str]]:
         # are automatically filtered to this merchant even without explicit predicates.
         for tbl in ("entities", "events", "links", "provenance"):
             conn.execute(
-                f"CREATE OR REPLACE TEMP VIEW {tbl} AS "
-                f"SELECT * FROM pg.{tbl} WHERE merchant_id = '{quoted_mid}'"
+                f"CREATE OR REPLACE TEMP VIEW {tbl} AS SELECT * FROM pg.{tbl} WHERE merchant_id = '{quoted_mid}'"
             )
         # Stub out internal tables that lack merchant_id columns but are visible
         # to DuckDB via the superuser ATTACH.  WHERE FALSE makes them always return
@@ -96,8 +94,7 @@ def sandboxed_sql(query: str, merchant_id: str) -> tuple[list[dict], list[str]]:
         # still letting references resolve without a "table not found" error.
         for internal_tbl in ("agent_runs", "ingest_cursors", "ingest_jobs"):
             conn.execute(
-                f"CREATE OR REPLACE TEMP VIEW {internal_tbl} AS "
-                f"SELECT * FROM pg.public.{internal_tbl} WHERE FALSE"
+                f"CREATE OR REPLACE TEMP VIEW {internal_tbl} AS SELECT * FROM pg.public.{internal_tbl} WHERE FALSE"
             )
         result = conn.execute(query_exec).fetchdf()
         rows = result.to_dict(orient="records")
@@ -112,61 +109,139 @@ def sandboxed_sql(query: str, merchant_id: str) -> tuple[list[dict], list[str]]:
 
 
 _FORBIDDEN_TOKENS = {
-    "INSERT", "UPDATE", "DELETE", "DROP", "CREATE", "ALTER", "TRUNCATE", "COPY",
-    "GRANT", "REVOKE", "EXECUTE", "ATTACH", "DETACH", "CALL", "PRAGMA",
-    "INSTALL", "LOAD", "IMPORT", "EXPORT", "READ_CSV", "READ_JSON",
-    "READ_PARQUET", "PARQUET_SCAN", "READ_TEXT", "READ_BLOB", "GLOB", "WRITE_CSV",
+    "INSERT",
+    "UPDATE",
+    "DELETE",
+    "DROP",
+    "CREATE",
+    "ALTER",
+    "TRUNCATE",
+    "COPY",
+    "GRANT",
+    "REVOKE",
+    "EXECUTE",
+    "ATTACH",
+    "DETACH",
+    "CALL",
+    "PRAGMA",
+    "INSTALL",
+    "LOAD",
+    "IMPORT",
+    "EXPORT",
+    "READ_CSV",
+    "READ_JSON",
+    "READ_PARQUET",
+    "PARQUET_SCAN",
+    "READ_TEXT",
+    "READ_BLOB",
+    "GLOB",
+    "WRITE_CSV",
     # DuckDB auto-sniffing and format variants (underscore is \w so these are single tokens)
-    "READ_CSV_AUTO", "READ_JSON_AUTO", "READ_NDJSON_AUTO", "READ_JSON_OBJECTS",
-    "SNIFF_CSV", "ST_READ", "READ_PARQUET_AUTO",
+    "READ_CSV_AUTO",
+    "READ_JSON_AUTO",
+    "READ_NDJSON_AUTO",
+    "READ_JSON_OBJECTS",
+    "SNIFF_CSV",
+    "ST_READ",
+    "READ_PARQUET_AUTO",
     # DuckDB postgres extension functions — bypass merchant-scoped views entirely
     # by sending raw SQL directly to Postgres over the ATTACH'd connection.
-    "POSTGRES_QUERY", "POSTGRES_EXECUTE",
+    "POSTGRES_QUERY",
+    "POSTGRES_EXECUTE",
     # postgres_scan / postgres_scan_pushdown open a NEW Postgres connection,
     # bypassing the merchant-scoped temp views entirely.
-    "POSTGRES_SCAN", "POSTGRES_SCAN_PUSHDOWN",
+    "POSTGRES_SCAN",
+    "POSTGRES_SCAN_PUSHDOWN",
     # SET can re-enable filesystems (SET disabled_filesystems='') or cause DoS
     # (SET memory_limit='1B'); RESET undoes hardened settings; USE switches schema.
-    "SET", "RESET", "USE",
+    "SET",
+    "RESET",
+    "USE",
     # DuckDB introspection functions that expose credentials/secrets
-    "DUCKDB_SETTINGS", "DUCKDB_SECRETS", "DUCKDB_EXTENSIONS",
-    "DUCKDB_COLUMNS", "DUCKDB_TABLES", "DUCKDB_VIEWS",
+    "DUCKDB_SETTINGS",
+    "DUCKDB_SECRETS",
+    "DUCKDB_EXTENSIONS",
+    "DUCKDB_COLUMNS",
+    "DUCKDB_TABLES",
+    "DUCKDB_VIEWS",
     # DuckDB catalog functions not yet blocked
-    "DUCKDB_DATABASES", "DUCKDB_SCHEMAS", "DUCKDB_FUNCTIONS", "DUCKDB_TYPES",
-    "DUCKDB_CONSTRAINTS", "DUCKDB_INDEXES", "DUCKDB_KEYWORDS",
+    "DUCKDB_DATABASES",
+    "DUCKDB_SCHEMAS",
+    "DUCKDB_FUNCTIONS",
+    "DUCKDB_TYPES",
+    "DUCKDB_CONSTRAINTS",
+    "DUCKDB_INDEXES",
+    "DUCKDB_KEYWORDS",
     "DUCKDB_TEMPORARY_FILES",
-    "PRAGMA_DATABASE_LIST", "PRAGMA_TABLE_INFO", "PRAGMA_SHOW",
+    "PRAGMA_DATABASE_LIST",
+    "PRAGMA_TABLE_INFO",
+    "PRAGMA_SHOW",
     # DuckDB Postgres/MySQL/SQLite ATTACH variants — open a new connection, bypassing
     # merchant-scoped views (SSRF / credential-exfil bypass)
-    "POSTGRES_ATTACH", "MYSQL_ATTACH", "SQLITE_ATTACH",
+    "POSTGRES_ATTACH",
+    "MYSQL_ATTACH",
+    "SQLITE_ATTACH",
     # EXPLAIN leaks physical table paths and pg attachment details
     "EXPLAIN",
     # File-read table functions for extension formats (Arrow, Avro, Iceberg, Delta, Excel)
-    "READ_ARROW", "READ_AVRO", "READ_XLSX", "READ_EXCEL", "ICEBERG_SCAN", "DELTA_SCAN",
+    "READ_ARROW",
+    "READ_AVRO",
+    "READ_XLSX",
+    "READ_EXCEL",
+    "ICEBERG_SCAN",
+    "DELTA_SCAN",
     "READ_ICEBERG",
     # Parquet metadata introspection functions (expose host filesystem paths)
-    "PARQUET_METADATA", "PARQUET_SCHEMA", "PARQUET_KV_METADATA", "PARQUET_FILE_METADATA",
+    "PARQUET_METADATA",
+    "PARQUET_SCHEMA",
+    "PARQUET_KV_METADATA",
+    "PARQUET_FILE_METADATA",
     # Postgres system catalogs exposed by DuckDB as bare names (no schema prefix needed)
-    "PG_CLASS", "PG_DATABASE", "PG_NAMESPACE", "PG_SETTINGS", "PG_TABLES", "PG_VIEWS",
+    "PG_CLASS",
+    "PG_DATABASE",
+    "PG_NAMESPACE",
+    "PG_SETTINGS",
+    "PG_TABLES",
+    "PG_VIEWS",
     # Additional PG catalog bare names usable for enumeration or SSRF
-    "PG_PROC", "PG_ATTRIBUTE", "PG_TYPE", "PG_CONSTRAINT", "PG_INDEX", "PG_INDEXES",
-    "PG_AUTHID", "PG_ROLES", "PG_USER", "PG_SHADOW",
+    "PG_PROC",
+    "PG_ATTRIBUTE",
+    "PG_TYPE",
+    "PG_CONSTRAINT",
+    "PG_INDEX",
+    "PG_INDEXES",
+    "PG_AUTHID",
+    "PG_ROLES",
+    "PG_USER",
+    "PG_SHADOW",
     # SQL control statements (schema-revealing or connection-state-altering)
-    "DESCRIBE", "SHOW", "SUMMARIZE",
-    "CHECKPOINT", "VACUUM", "ANALYZE",
-    "BEGIN", "COMMIT", "ROLLBACK",
+    "DESCRIBE",
+    "SHOW",
+    "SUMMARIZE",
+    "CHECKPOINT",
+    "VACUUM",
+    "ANALYZE",
+    "BEGIN",
+    "COMMIT",
+    "ROLLBACK",
     # Raw tables — not shadowed by merchant-scoped views, so unqualified references
     # would bypass merchant isolation by resolving against the Postgres attachment.
-    "RAW_SHOPIFY_ORDERS", "RAW_SHOPIFY_REFUNDS", "RAW_SHOPIFY_PRODUCTS",
-    "RAW_SHOPIFY_CUSTOMERS", "RAW_META_CAMPAIGNS", "RAW_META_ADSETS",
-    "RAW_META_ADS", "RAW_META_INSIGHTS", "RAW_SHIPROCKET_SHIPMENTS",
+    "RAW_SHOPIFY_ORDERS",
+    "RAW_SHOPIFY_REFUNDS",
+    "RAW_SHOPIFY_PRODUCTS",
+    "RAW_SHOPIFY_CUSTOMERS",
+    "RAW_META_CAMPAIGNS",
+    "RAW_META_ADSETS",
+    "RAW_META_ADS",
+    "RAW_META_INSIGHTS",
+    "RAW_SHIPROCKET_SHIPMENTS",
 }
 
 
 def _strip_sql_comments(sql: str) -> str:
     """Remove SQL line comments (--) and block comments (/* */) from a query."""
-    sql = re.sub(r'--[^\n]*', '', sql)
-    sql = re.sub(r'/\*.*?\*/', '', sql, flags=re.DOTALL)
+    sql = re.sub(r"--[^\n]*", "", sql)
+    sql = re.sub(r"/\*.*?\*/", "", sql, flags=re.DOTALL)
     return sql
 
 
@@ -176,9 +251,7 @@ def _validate_query(query: str) -> None:
     # _strip_sql_comments is not string-context-aware; a /* inside one literal
     # and */ inside another can swallow a forbidden token that DuckDB still executes.
     if any(marker in query for marker in ("--", "/*", "*/", "\r")):
-        raise ValueError(
-            "Query rejected: SQL comments and carriage returns are not permitted."
-        )
+        raise ValueError("Query rejected: SQL comments and carriage returns are not permitted.")
     # Strip comments before all checks so that constructs like
     # pg/**/.entities or pg-- x\n.entities cannot bypass pattern matches.
     clean = _strip_sql_comments(query)
@@ -204,6 +277,7 @@ def _validate_query(query: str) -> None:
         r'(?:\bpg\b|"pg"|`pg`)\s*\.'
         r'|(?:\bpg_catalog\b|"pg_catalog")\s*\.'
         r'|(?:\binformation_schema\b|"information_schema")\s*\.',
-        clean, re.IGNORECASE
+        clean,
+        re.IGNORECASE,
     ):
         raise ValueError("Direct schema access not permitted — use bare table names")

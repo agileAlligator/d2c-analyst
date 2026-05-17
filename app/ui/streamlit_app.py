@@ -1,15 +1,18 @@
 """Minimal Streamlit chat UI."""
+
 import os
 import re
 
 import requests
 import streamlit as st
+
 from app.config import settings
 
 
 def _clean_answer(text: str) -> str:
     """Strip <cite ref="...">value</cite> tags — keep just the value."""
-    return re.sub(r'<cite ref="[^"]*">([^<]*)</cite>', r'\1', text)
+    return re.sub(r'<cite ref="[^"]*">([^<]*)</cite>', r"\1", text)
+
 
 API_URL = os.getenv("API_URL", "http://localhost:10001")
 
@@ -62,7 +65,7 @@ for msg in st.session_state.messages:
                 label = f"{'⚡' if r.get('tier') == 'cheap' else '🧠'} {model}"
                 if r.get("escalated"):
                     label += " (escalated)"
-                raw_reason = r.get('reason', '')
+                raw_reason = r.get("reason", "")
                 reason_label = raw_reason.split(":")[0] if ":" in raw_reason else raw_reason
                 st.caption(f"{label} · {reason_label}")
         if msg.get("tool_calls"):
@@ -127,14 +130,16 @@ if question:
                         for tc in data["tool_calls"]:
                             st.json(tc)
 
-                st.session_state.messages.append({
-                    "role": "assistant",
-                    "content": display_answer,
-                    "citations_valid": data.get("all_citations_valid"),
-                    "issues": data.get("issues"),
-                    "tool_calls": data.get("tool_calls"),
-                    "routing": data.get("routing"),
-                })
+                st.session_state.messages.append(
+                    {
+                        "role": "assistant",
+                        "content": display_answer,
+                        "citations_valid": data.get("all_citations_valid"),
+                        "issues": data.get("issues"),
+                        "tool_calls": data.get("tool_calls"),
+                        "routing": data.get("routing"),
+                    }
+                )
 
                 # Keep raw answer (with cite tags) in history so the LLM
                 # can reference provenance IDs in follow-up turns

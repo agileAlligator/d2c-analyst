@@ -61,13 +61,16 @@ _SKIP_COLS = {"merchant_id"}  # always present on every table — omit for brevi
 def get_schema_description() -> str:
     """Return a single-line-per-table column listing queried live from the DB."""
     with engine.connect() as conn:
-        rows = conn.execute(text("""
+        rows = conn.execute(
+            text("""
             SELECT table_name, column_name, data_type
             FROM information_schema.columns
             WHERE table_schema = 'public'
               AND table_name = ANY(:tables)
             ORDER BY table_name, ordinal_position
-        """), {"tables": list(_WAREHOUSE_TABLES)}).fetchall()
+        """),
+            {"tables": list(_WAREHOUSE_TABLES)},
+        ).fetchall()
 
     tables: dict[str, list[str]] = {}
     for table_name, col_name, data_type in rows:

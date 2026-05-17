@@ -1,4 +1,5 @@
 """Incremental ingestion cursor management."""
+
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 

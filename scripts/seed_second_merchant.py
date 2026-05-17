@@ -1,4 +1,5 @@
 """Seed a second merchant (merchant_id='demo2') to prove RLS isolation."""
+
 import sys
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -19,16 +20,16 @@ BASE_DATE = datetime(2026, 5, 17, tzinfo=UTC)
 
 def _upsert_raw(db, model_class, merchant_id: str, source_record_id: str, **kwargs):
     """Insert a raw record only if (merchant_id, source_record_id) does not already exist."""
-    existing = db.query(model_class).filter_by(
-        merchant_id=merchant_id, source_record_id=source_record_id
-    ).first()
+    existing = db.query(model_class).filter_by(merchant_id=merchant_id, source_record_id=source_record_id).first()
     if existing is None:
-        db.add(model_class(
-            id=uuid.uuid4(),
-            merchant_id=merchant_id,
-            source_record_id=source_record_id,
-            **kwargs,
-        ))
+        db.add(
+            model_class(
+                id=uuid.uuid4(),
+                merchant_id=merchant_id,
+                source_record_id=source_record_id,
+                **kwargs,
+            )
+        )
 
 
 def seed():
@@ -49,12 +50,27 @@ def seed():
                 "created_at": created_at.isoformat(),
                 "updated_at": created_at.isoformat(),
                 "discount_codes": [],
-                "line_items": [{"id": 1000 + i, "sku": "SKU-X01", "title": "Product X",
-                                 "quantity": 1, "price": str(total), "vendor": "Demo2"}],
+                "line_items": [
+                    {
+                        "id": 1000 + i,
+                        "sku": "SKU-X01",
+                        "title": "Product X",
+                        "quantity": 1,
+                        "price": str(total),
+                        "vendor": "Demo2",
+                    }
+                ],
                 "total_shipping_price_set": {"shop_money": {"amount": "0", "currency_code": "INR"}},
             }
-            _upsert_raw(db, RawShopifyOrder, MERCHANT_ID, f"order:{order_id}",
-                        payload=order, fetched_at=datetime.now(UTC), run_id="seed2")
+            _upsert_raw(
+                db,
+                RawShopifyOrder,
+                MERCHANT_ID,
+                f"order:{order_id}",
+                payload=order,
+                fetched_at=datetime.now(UTC),
+                run_id="seed2",
+            )
         db.commit()
     print(f"Merchant '{MERCHANT_ID}' seeded with 5 orders.")
 

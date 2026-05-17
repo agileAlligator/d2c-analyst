@@ -1,4 +1,5 @@
 """Base class for autonomous agents."""
+
 import logging
 import uuid
 from dataclasses import dataclass
@@ -15,8 +16,8 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class Proposal:
-    action_type: str       # "pause_adset", "raise_price", "switch_courier", "bundle"
-    entity_key: str        # the thing to act on
+    action_type: str  # "pause_adset", "raise_price", "switch_courier", "bundle"
+    entity_key: str  # the thing to act on
     expected_inr_impact: float
     reasoning: str
     provenance_ids: list[str]

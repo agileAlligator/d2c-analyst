@@ -6,6 +6,7 @@ Cascade path:  cheap model fails citation validation → escalate to gpt-4o, ret
 Reference: Chen, Zaharia, Zou — "FrugalGPT" (Stanford, 2023).
            We apply the cascade pattern using the citation validator as the verifier.
 """
+
 from __future__ import annotations
 
 import logging
@@ -65,7 +66,9 @@ class HeuristicRouter:
         """Upgrade to smart model after the cheap model failed validation."""
         logger.info(
             "Cascade escalation: %s → %s (reason: %s)",
-            prior.model, SMART_MODEL, failure_reason,
+            prior.model,
+            SMART_MODEL,
+            failure_reason,
         )
         return RoutingDecision(
             model=SMART_MODEL,

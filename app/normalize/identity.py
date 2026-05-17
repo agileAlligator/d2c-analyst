@@ -1,4 +1,5 @@
 """Cross-source identity resolution — links Shopify orders ↔ Shiprocket shipments, Meta ↔ Shopify."""
+
 import logging
 import uuid
 
@@ -23,7 +24,8 @@ def resolve_all(db: Session, merchant_id: str) -> dict[str, int]:
 
 def _link_shopify_shiprocket(db: Session, merchant_id: str) -> int:
     """High-confidence: match on channel_order_id == Shopify order number."""
-    rows = db.execute(text("""
+    rows = db.execute(
+        text("""
         SELECT
             e_order.entity_id AS order_entity_id,
             e_ship.entity_id  AS ship_entity_id
@@ -38,7 +40,9 @@ def _link_shopify_shiprocket(db: Session, merchant_id: str) -> int:
         WHERE e_order.merchant_id = :mid
           AND e_order.entity_type = 'order'
           AND e_ship.entity_type  = 'shipment'
-    """), {"mid": merchant_id}).fetchall()
+    """),
+        {"mid": merchant_id},
+    ).fetchall()
 
     count = 0
     for order_eid, ship_eid in rows:
@@ -54,7 +58,8 @@ def _link_meta_shopify(db: Session, merchant_id: str) -> int:
     Only links an order to the specific campaign whose id appears in the discount code,
     not to every campaign. Confidence 0.6 — discount codes are campaign-scoped in the seed.
     """
-    rows = db.execute(text("""
+    rows = db.execute(
+        text("""
         SELECT DISTINCT
             e_order.entity_id AS order_entity_id,
             e_camp.entity_id  AS campaign_entity_id,
@@ -67,9 +72,12 @@ def _link_meta_shopify(db: Session, merchant_id: str) -> int:
           AND e_camp.entity_type  = 'ad_campaign'
           AND e_order.attributes->'discount_codes' != '[]'::jsonb
           AND e_order.attributes->>'discount_codes' IS NOT NULL
-    """), {"mid": merchant_id}).fetchall()
+    """),
+        {"mid": merchant_id},
+    ).fetchall()
 
     import json as _json
+
     count = 0
     for order_eid, camp_eid, codes_raw, campaign_id in rows:
         if not codes_raw or not campaign_id:
@@ -79,9 +87,7 @@ def _link_meta_shopify(db: Session, merchant_id: str) -> int:
         except Exception:
             continue
         # Skip placeholder or too-short campaign IDs that cause noise
-        if (not campaign_id
-                or len(campaign_id) < 4
-                or campaign_id.lower() in ("unknown", "none", "null", "")):
+        if not campaign_id or len(campaign_id) < 4 or campaign_id.lower() in ("unknown", "none", "null", ""):
             continue
 
         cid = campaign_id.lower()
@@ -100,19 +106,21 @@ def _link_meta_shopify(db: Session, merchant_id: str) -> int:
     return count
 
 
-def _upsert_link(db: Session, merchant_id: str,
-                 from_entity, to_entity,
-                 link_type: str, confidence: float, method: str):
-    stmt = pg_insert(Link.__table__).values(
-        id=uuid.uuid4(),
-        merchant_id=merchant_id,
-        from_entity=from_entity,
-        to_entity=to_entity,
-        link_type=link_type,
-        confidence=confidence,
-        method=method,
-    ).on_conflict_do_update(
-        constraint="uq_link",
-        set_={"confidence": confidence},
+def _upsert_link(db: Session, merchant_id: str, from_entity, to_entity, link_type: str, confidence: float, method: str):
+    stmt = (
+        pg_insert(Link.__table__)
+        .values(
+            id=uuid.uuid4(),
+            merchant_id=merchant_id,
+            from_entity=from_entity,
+            to_entity=to_entity,
+            link_type=link_type,
+            confidence=confidence,
+            method=method,
+        )
+        .on_conflict_do_update(
+            constraint="uq_link",
+            set_={"confidence": confidence},
+        )
     )
     db.execute(stmt)

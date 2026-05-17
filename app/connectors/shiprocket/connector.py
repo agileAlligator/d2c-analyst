@@ -1,4 +1,5 @@
 """Shiprocket API connector (Bearer token auth)."""
+
 import logging
 from collections.abc import Iterator
 
@@ -18,17 +19,19 @@ class ShiprocketConnector(BaseConnector):
     def __init__(self):
         super().__init__()
         self._token = settings.shiprocket_token
-        self._http.headers.update({
-            "Authorization": f"Bearer {self._token}",
-            "Content-Type": "application/json",
-        })
+        self._http.headers.update(
+            {
+                "Authorization": f"Bearer {self._token}",
+                "Content-Type": "application/json",
+            }
+        )
 
     def meta(self) -> ConnectorMeta:
         return ConnectorMeta(name="shiprocket", source="shiprocket", resources=RESOURCES)
 
     def auth_status(self) -> bool:
         try:
-            resp = self._get(f"{BASE}/shipments", params={"per_page": 1})
+            self._get(f"{BASE}/shipments", params={"per_page": 1})
             return True
         except Exception:
             return False

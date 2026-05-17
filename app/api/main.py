@@ -1,4 +1,5 @@
 """FastAPI application — chat, run viewer, health."""
+
 import logging
 
 from fastapi import Depends, FastAPI, Header, HTTPException
@@ -16,7 +17,7 @@ app = FastAPI(title="D2C Analyst", version="0.1.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=getattr(settings, 'allowed_origins', ["http://localhost:10002"]),
+    allow_origins=getattr(settings, "allowed_origins", ["http://localhost:10002"]),
     allow_credentials=True,
     allow_methods=["GET", "POST"],
     allow_headers=["Authorization", "Content-Type", "X-API-Key"],
@@ -24,10 +25,10 @@ app.add_middleware(
 
 
 def get_merchant_id(x_api_key: str = Header(default=None)) -> str:
-    key_map = getattr(settings, 'api_key_map', {})
+    key_map = getattr(settings, "api_key_map", {})
     if not key_map:
         # Require explicit opt-in for keyless dev mode via DEV_MODE=true in env
-        if not getattr(settings, 'dev_mode', False):
+        if not getattr(settings, "dev_mode", False):
             raise HTTPException(
                 status_code=500,
                 detail="Server misconfiguration: API_KEYS_RAW not set. Set DEV_MODE=true to allow keyless dev access.",
@@ -75,7 +76,7 @@ def chat(
         result = run_chat(req.question, db, merchant_id, req.history)
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e))
-    except Exception as e:
+    except Exception:
         logger.exception("Unhandled error in /chat for merchant %s", merchant_id)
         raise HTTPException(status_code=500, detail="Internal error — check server logs")
     return ChatResponse(**result)
@@ -114,10 +115,14 @@ def get_run(
     merchant_id: str = Depends(get_merchant_id),
 ):
     set_merchant(db, merchant_id)
-    run = db.query(AgentRun).filter(
-        AgentRun.id == run_id,
-        AgentRun.merchant_id == merchant_id,
-    ).first()
+    run = (
+        db.query(AgentRun)
+        .filter(
+            AgentRun.id == run_id,
+            AgentRun.merchant_id == merchant_id,
+        )
+        .first()
+    )
     if not run:
         raise HTTPException(404, "Run not found")
     return {

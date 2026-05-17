@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Run all normalizers and identity resolution for a merchant."""
+
 import argparse
 import logging
 import sys

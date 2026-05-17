@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Run the Margin Watch agent for a merchant."""
+
 import argparse
 import logging
 import sys

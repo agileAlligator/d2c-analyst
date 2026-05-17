@@ -4,6 +4,7 @@ Uses FastAPI's TestClient with mocked run_chat and DB session so tests
 run without a live LLM or database connection. DB dependency is overridden
 via app.dependency_overrides (the FastAPI-idiomatic way).
 """
+
 import uuid
 from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
@@ -43,9 +44,10 @@ def _db_override(db=None):
 @pytest.fixture()
 def dev_client():
     """TestClient with dev_mode=True and a mock DB so no external services needed."""
-    with patch.object(settings, "dev_mode", True), \
-         patch.object(type(settings), "api_key_map",
-                      new_callable=lambda: property(lambda self: {})):
+    with (
+        patch.object(settings, "dev_mode", True),
+        patch.object(type(settings), "api_key_map", new_callable=lambda: property(lambda self: {})),
+    ):
         app.dependency_overrides[get_db] = _db_override
         yield TestClient(app, raise_server_exceptions=False)
         app.dependency_overrides.clear()
@@ -55,9 +57,10 @@ def dev_client():
 def keyed_client():
     """TestClient with a real API key configured."""
     key_map = {"test-key-123": "demo"}
-    with patch.object(settings, "dev_mode", False), \
-         patch.object(type(settings), "api_key_map",
-                      new_callable=lambda: property(lambda self: key_map)):
+    with (
+        patch.object(settings, "dev_mode", False),
+        patch.object(type(settings), "api_key_map", new_callable=lambda: property(lambda self: key_map)),
+    ):
         app.dependency_overrides[get_db] = _db_override
         yield TestClient(app, raise_server_exceptions=False)
         app.dependency_overrides.clear()
@@ -80,6 +83,7 @@ def _make_run(run_id=None, merchant_id="demo"):
 # Health
 # ---------------------------------------------------------------------------
 
+
 class TestHealth:
     def test_health_returns_ok(self):
         # /health has no auth or DB — use a plain client
@@ -93,11 +97,13 @@ class TestHealth:
 # Authentication
 # ---------------------------------------------------------------------------
 
+
 class TestAuthentication:
     def test_no_key_and_no_dev_mode_returns_500(self):
-        with patch.object(settings, "dev_mode", False), \
-             patch.object(type(settings), "api_key_map",
-                          new_callable=lambda: property(lambda self: {})):
+        with (
+            patch.object(settings, "dev_mode", False),
+            patch.object(type(settings), "api_key_map", new_callable=lambda: property(lambda self: {})),
+        ):
             client = TestClient(app, raise_server_exceptions=False)
             resp = client.post("/chat", json={"question": "hello"})
         assert resp.status_code == 500
@@ -133,6 +139,7 @@ class TestAuthentication:
 # ---------------------------------------------------------------------------
 # POST /chat
 # ---------------------------------------------------------------------------
+
 
 class TestChatEndpoint:
     def test_chat_returns_correct_schema(self, dev_client):
@@ -186,15 +193,12 @@ class TestChatEndpoint:
 # GET /runs and GET /runs/{run_id}
 # ---------------------------------------------------------------------------
 
+
 class TestRunsEndpoint:
     def test_list_runs_returns_list(self, dev_client):
         runs = [_make_run(), _make_run()]
         mock_db = _mock_db_session()
-        mock_db.query.return_value \
-               .filter.return_value \
-               .order_by.return_value \
-               .limit.return_value \
-               .all.return_value = runs
+        mock_db.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = runs
 
         def _override():
             yield mock_db
@@ -212,11 +216,7 @@ class TestRunsEndpoint:
 
     def test_list_runs_empty(self, dev_client):
         mock_db = _mock_db_session()
-        mock_db.query.return_value \
-               .filter.return_value \
-               .order_by.return_value \
-               .limit.return_value \
-               .all.return_value = []
+        mock_db.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = []
 
         def _override():
             yield mock_db

@@ -1,7 +1,8 @@
 """Meta Marketing API connector."""
+
 import logging
 from collections.abc import Iterator
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from app.config import settings
 from app.connectors.base import BaseConnector, ConnectorMeta, RawRecord
@@ -59,10 +60,10 @@ class MetaAdsConnector(BaseConnector):
         if since:
             since_dt = datetime.fromisoformat(since)
         else:
-            since_dt = datetime.now(timezone.utc) - timedelta(days=30)
+            since_dt = datetime.now(UTC) - timedelta(days=30)
 
         date_start = since_dt.strftime("%Y-%m-%d")
-        date_stop = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        date_stop = datetime.now(UTC).strftime("%Y-%m-%d")
 
         fields = (
             "campaign_id,campaign_name,adset_id,adset_name,ad_id,ad_name,"

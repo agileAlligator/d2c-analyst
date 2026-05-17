@@ -1,4 +1,5 @@
 """Shopify Admin REST API connector."""
+
 import logging
 from collections.abc import Iterator
 
@@ -19,10 +20,12 @@ class ShopifyConnector(BaseConnector):
         self._domain = settings.shopify_shop_domain
         self._token = settings.shopify_access_token
         self._base = f"https://{self._domain}/admin/api/2024-01"
-        self._http.headers.update({
-            "X-Shopify-Access-Token": self._token,
-            "Content-Type": "application/json",
-        })
+        self._http.headers.update(
+            {
+                "X-Shopify-Access-Token": self._token,
+                "Content-Type": "application/json",
+            }
+        )
 
     def meta(self) -> ConnectorMeta:
         return ConnectorMeta(name="shopify", source="shopify", resources=RESOURCES)

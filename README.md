@@ -348,7 +348,7 @@ Ports: api `:10001`, ui `:10002`, db `:5434`
 | Scale harness + RLS hardening | 5h | Opus review found 12 bugs; all fixed |
 | Eval suite + second merchant | 2h | Golden questions, scoreboard, RLS isolation test |
 | Model router | 2h | HeuristicRouter, signals, cascade wiring, 21 tests |
-| Adversarial hardening | 4h | 6-round loop; fixed ~20 bugs across validator, catalog, prompt, tools |
+| Adversarial hardening | 4h | 7-round loop; fixed ~20 bugs across validator, catalog, prompt, tools |
 
 ---
 
@@ -381,7 +381,7 @@ Honest per-file breakdown:
 | `app/chat/loop.py` | Specified tool schema, retry logic, routing contract | Generated API calls and message threading; I added `for...else` MAX_TURNS guard |
 | `app/chat/routing/` | Designed signals and cascade contract; chose FrugalGPT over RouteLLM (OpenAI path only) | Generated HeuristicRouter and signal regexes; I reviewed all 8 signals |
 | `app/agents/margin_watch.py` | Specified 3 proposal types and NOT_SENT contract | Generated proposal logic; I verified ₹ impact calculations |
-| `scripts/seed_demo_merchant.py` | Specified ground-truth values (₹31,814 30d revenue, Shadowfax 47.8% RTO) | Generated fixture data |
+| `scripts/seed_demo_merchant.py` | Specified ground-truth values (₹31,814 30d revenue, Shadowfax 21.7% RTO) | Generated fixture data |
 | `tests/eval/golden_questions.py` | Specified questions, ground-truth assertions, adversarial cases | Generated test bodies; I fixed 2 wrong assertions and added 3 adversarial questions |
 | README | Wrote all prose | Drafted structure for some sections |
 

@@ -3,6 +3,7 @@
 These guard against prompt changes that remove critical routing guidance,
 not against model behavior (which requires a live LLM).
 """
+
 from pathlib import Path
 
 PROMPT_PATH = Path(__file__).parent.parent.parent / "app/chat/prompts/system.txt"
@@ -18,9 +19,7 @@ def test_prompt_documents_specific_entity_lookup():
     assert "json_extract_string(attributes" in p, (
         "system prompt must show the DuckDB json_extract_string lookup pattern for specific orders"
     )
-    assert "list_entities" in p and "20-row sample" in p, (
-        "system prompt must warn that list_entities is only a sample"
-    )
+    assert "list_entities" in p and "20-row sample" in p, "system prompt must warn that list_entities is only a sample"
 
 
 def test_prompt_no_derived_arithmetic_rule():

@@ -1,7 +1,9 @@
 """Citation validator tests — the most critical piece."""
+
 import os
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from app.chat.validator import extract_cite_refs, validate_and_clean
 
@@ -84,7 +86,10 @@ def test_value_not_in_tool_results_flagged(mock_db):
     text = '<cite ref="real_id">999999</cite>'
     with patch("app.chat.validator._try_resolve", return_value=True):
         cleaned, all_valid, issues = validate_and_clean(
-            text, provenance_ids=[], db=mock_db, merchant_id="demo",
+            text,
+            provenance_ids=[],
+            db=mock_db,
+            merchant_id="demo",
             tool_value_set={100.0, 200.0},
         )
     assert not all_valid
@@ -130,9 +135,7 @@ def test_period_prose_not_stripped(mock_db):
         "Past 14 days were solid.",
     ]
     for txt in cases:
-        cleaned, valid, issues = validate_and_clean(
-            txt, provenance_ids=[], db=mock_db, merchant_id="demo"
-        )
+        cleaned, valid, issues = validate_and_clean(txt, provenance_ids=[], db=mock_db, merchant_id="demo")
         assert "*(uncited)*" not in cleaned, f"Period digit stripped in: {txt!r} → {cleaned!r}"
         assert not any("ncited" in i for i in issues), f"Flagged in: {txt!r} → {issues}"
 
@@ -177,8 +180,10 @@ def test_positive_value_still_rejected_when_no_magnitude_match(mock_db):
 # Helper — fetches a real source_record_id from the DB; skips if none exists.
 # ---------------------------------------------------------------------------
 
+
 def _real_record_id(merchant: str, table: str = "raw_shopify_orders") -> str:
     from sqlalchemy import text
+
     from app.warehouse.db import SessionLocal
 
     with SessionLocal() as db:
@@ -208,13 +213,9 @@ class TestResolverRealDB:
         text = f'Revenue was <cite ref="{real_id}">₹500</cite>.'
 
         with SessionLocal() as db:
-            cleaned, all_valid, issues = validate_and_clean(
-                text, provenance_ids=[], db=db, merchant_id="demo"
-            )
+            cleaned, all_valid, issues = validate_and_clean(text, provenance_ids=[], db=db, merchant_id="demo")
 
-        assert all_valid is True, (
-            f"Expected real record {real_id!r} to resolve, but got issues: {issues}"
-        )
+        assert all_valid is True, f"Expected real record {real_id!r} to resolve, but got issues: {issues}"
 
     def test_nonexistent_id_marks_unverified(self):
         """A fabricated ID must NOT resolve — all_valid=False, 'unverified' in output."""
@@ -224,9 +225,7 @@ class TestResolverRealDB:
         text = f'Revenue was <cite ref="{fake_id}">₹500</cite>.'
 
         with SessionLocal() as db:
-            cleaned, all_valid, issues = validate_and_clean(
-                text, provenance_ids=[], db=db, merchant_id="demo"
-            )
+            cleaned, all_valid, issues = validate_and_clean(text, provenance_ids=[], db=db, merchant_id="demo")
 
         assert all_valid is False, "Fabricated ID should not resolve"
         assert "unverified" in cleaned, "'unverified' badge missing from cleaned output"
@@ -234,16 +233,14 @@ class TestResolverRealDB:
 
     def test_cross_merchant_id_does_not_resolve(self):
         """A record belonging to demo2 must NOT resolve when queried as demo."""
-        from app.warehouse.db import SessionLocal
         from sqlalchemy import text
+
+        from app.warehouse.db import SessionLocal
 
         # Ensure demo2 has seed data; skip if not
         with SessionLocal() as db:
             row = db.execute(
-                text(
-                    "SELECT source_record_id FROM raw_shopify_orders "
-                    "WHERE merchant_id = :m LIMIT 1"
-                ),
+                text("SELECT source_record_id FROM raw_shopify_orders WHERE merchant_id = :m LIMIT 1"),
                 {"m": "demo2"},
             ).fetchone()
         if row is None:
@@ -253,13 +250,10 @@ class TestResolverRealDB:
         answer_text = f'Revenue was <cite ref="{demo2_id}">₹500</cite>.'
 
         with SessionLocal() as db:
-            cleaned, all_valid, issues = validate_and_clean(
-                answer_text, provenance_ids=[], db=db, merchant_id="demo"
-            )
+            cleaned, all_valid, issues = validate_and_clean(answer_text, provenance_ids=[], db=db, merchant_id="demo")
 
         assert all_valid is False, (
-            f"Record {demo2_id!r} belongs to demo2 but resolved under demo — "
-            "get_raw_payload must filter by merchant_id"
+            f"Record {demo2_id!r} belongs to demo2 but resolved under demo — get_raw_payload must filter by merchant_id"
         )
 
     def test_table_prefix_hint_resolves(self):
@@ -272,12 +266,8 @@ class TestResolverRealDB:
         for ref_id in (prefixed_id, real_id):
             text = f'Revenue was <cite ref="{ref_id}">₹500</cite>.'
             with SessionLocal() as db:
-                cleaned, all_valid, issues = validate_and_clean(
-                    text, provenance_ids=[], db=db, merchant_id="demo"
-                )
-            assert all_valid is True, (
-                f"Expected ref_id {ref_id!r} to resolve, but got issues: {issues}"
-            )
+                cleaned, all_valid, issues = validate_and_clean(text, provenance_ids=[], db=db, merchant_id="demo")
+            assert all_valid is True, f"Expected ref_id {ref_id!r} to resolve, but got issues: {issues}"
 
 
 def test_calendar_date_labels_not_stripped(mock_db):
@@ -293,12 +283,8 @@ def test_calendar_date_labels_not_stripped(mock_db):
         "Numbers for Jan 5 are pending.",
     ]
     for txt in cases:
-        cleaned, _, _ = validate_and_clean(
-            txt, provenance_ids=[], db=mock_db, merchant_id="demo"
-        )
-        assert "*(uncited)*" not in cleaned, (
-            f"Date digit stripped in: {txt!r} -> {cleaned!r}"
-        )
+        cleaned, _, _ = validate_and_clean(txt, provenance_ids=[], db=mock_db, merchant_id="demo")
+        assert "*(uncited)*" not in cleaned, f"Date digit stripped in: {txt!r} -> {cleaned!r}"
 
 
 def test_proper_noun_year_not_stripped(mock_db):
@@ -309,12 +295,8 @@ def test_proper_noun_year_not_stripped(mock_db):
         "The New Year Push 2024 campaign drove growth.",
     ]
     for txt in cases:
-        cleaned, _, _ = validate_and_clean(
-            txt, provenance_ids=[], db=mock_db, merchant_id="demo"
-        )
-        assert "*(uncited)*" not in cleaned, (
-            f"Proper-noun year stripped in: {txt!r} -> {cleaned!r}"
-        )
+        cleaned, _, _ = validate_and_clean(txt, provenance_ids=[], db=mock_db, merchant_id="demo")
+        assert "*(uncited)*" not in cleaned, f"Proper-noun year stripped in: {txt!r} -> {cleaned!r}"
 
 
 def test_zero_citation_with_zero_in_tool_value_set_passes(mock_db):
@@ -359,8 +341,7 @@ def test_multi_number_cite_all_numbers_checked(mock_db):
     # Conversely, when BOTH numbers are in the tool set the cite must pass.
     with patch("app.chat.validator._try_resolve", return_value=True):
         cleaned2, valid2, issues2 = validate_and_clean(
-            text, ["prov:123"], mock_db, merchant_id="demo",
-            tool_value_set={31814.0, 99999.0}
+            text, ["prov:123"], mock_db, merchant_id="demo", tool_value_set={31814.0, 99999.0}
         )
     assert valid2 is True
     assert len([i for i in issues2 if "not found in tool results" in i]) == 0
@@ -369,18 +350,14 @@ def test_multi_number_cite_all_numbers_checked(mock_db):
 def test_lowercase_preceding_word_still_strips_year(mock_db):
     """Guard: years after single capitalized or lowercase words must still be stripped."""
     cases = [
-        "Our data is from 2023.",         # sentence-initial "Our" (single cap word)
-        "The revenue 2024 figure.",        # sentence-initial "The" (single cap word)
-        "This 2024 result is surprising.", # single cap word
+        "Our data is from 2023.",  # sentence-initial "Our" (single cap word)
+        "The revenue 2024 figure.",  # sentence-initial "The" (single cap word)
+        "This 2024 result is surprising.",  # single cap word
         "revenue 2024 figure looks off.",  # lowercase preceding word
     ]
     # Note: "Last 2023" is intentionally NOT listed here — "last" is in _timeref_re
     # as a time-reference prefix (protecting "last 30", "last 7"), so "Last 2023"
     # is correctly treated as a time reference and survives the scan.
     for txt in cases:
-        cleaned, valid, _ = validate_and_clean(
-            txt, provenance_ids=[], db=mock_db, merchant_id="demo"
-        )
-        assert not valid, (
-            f"Expected bare year to be flagged in: {txt!r} -> {cleaned!r}"
-        )
+        cleaned, valid, _ = validate_and_clean(txt, provenance_ids=[], db=mock_db, merchant_id="demo")
+        assert not valid, f"Expected bare year to be flagged in: {txt!r} -> {cleaned!r}"

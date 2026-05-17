@@ -3,6 +3,7 @@
 Uses pytest-httpx to intercept httpx calls; no real credentials needed.
 Exercises: correct RawRecord parsing, pagination (page-size stop condition), retry on 429.
 """
+
 import json
 from pathlib import Path
 
@@ -10,11 +11,10 @@ import pytest
 
 from app.connectors.shiprocket.connector import ShiprocketConnector
 
-_FIXTURE = json.loads(
-    (Path(__file__).parent.parent / "fixtures/shiprocket/shipments.json").read_text()
-)
+_FIXTURE = json.loads((Path(__file__).parent.parent / "fixtures/shiprocket/shipments.json").read_text())
 
 # ---- fixture / helpers -------------------------------------------------------
+
 
 @pytest.fixture(autouse=True)
 def _patch_settings(monkeypatch):
@@ -26,6 +26,7 @@ def _make_connector() -> ShiprocketConnector:
 
 
 # ---- parsing -----------------------------------------------------------------
+
 
 def test_shipments_parse_source_record_id(httpx_mock):
     httpx_mock.add_response(json=_FIXTURE)
@@ -53,6 +54,7 @@ def test_shipments_parse_payload_fields(httpx_mock):
 
 # ---- pagination: Shiprocket stops when page returns < per_page items ---------
 
+
 def test_pagination_stops_when_partial_page(httpx_mock):
     # 2 records < per_page (100) → connector stops after first call
     httpx_mock.add_response(json=_FIXTURE)
@@ -74,6 +76,7 @@ def test_pagination_fetches_next_page_when_full(httpx_mock):
 
 # ---- retry on 429 ------------------------------------------------------------
 
+
 def test_retry_on_429(httpx_mock):
     httpx_mock.add_response(status_code=429, headers={"Retry-After": "0"})
     httpx_mock.add_response(json=_FIXTURE)
@@ -91,6 +94,7 @@ def test_unknown_resource_raises(httpx_mock):
 def test_orders_resource_removed(httpx_mock):
     """'orders' was removed from RESOURCES — pull() must reject it."""
     from app.connectors.shiprocket.connector import RESOURCES
+
     assert "orders" not in RESOURCES
     with pytest.raises(ValueError, match="Unknown Shiprocket resource"):
         list(_make_connector().pull("orders"))

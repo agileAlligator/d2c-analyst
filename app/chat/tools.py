@@ -1,4 +1,5 @@
 """Tool definitions and handlers for the chat agent."""
+
 import json
 import logging
 from datetime import UTC
@@ -42,18 +43,31 @@ TOOL_DEFINITIONS = [
             "Query a pre-defined business metric. Returns rows with provenance IDs. "
             "Use this for revenue, ad_spend, rto_rate, contribution_margin, cac, average_order_value, refunds, roas. "
             "Note: `revenue` already nets refunds out (refunds are stored as negative amounts). "
-            "To answer 'how much was refunded?' use the `refunds` metric instead — it returns gross refund total as a positive number. "
+            "To answer 'how much was refunded?' use the `refunds` metric instead"
+            " — it returns gross refund total as a positive number. "
             "Grain: `contribution_margin` is per ORDER (one row per order_number). "
             "The warehouse has NO SKU-level events — do not relabel order numbers as SKUs. "
-            "Use `roas` for return-on-ad-spend questions — it returns revenue/ad_spend in a single cited row; do NOT divide revenue by ad_spend in prose, that produces an uncited number. "
-            "Use the 'orders' metric for 'how many orders?' questions — do NOT use sql COUNT(*) or list_entities for order counts."
+            "Use `roas` for return-on-ad-spend questions — it returns revenue/ad_spend in a single cited row;"
+            " do NOT divide revenue by ad_spend in prose, that produces an uncited number. "
+            "Use the 'orders' metric for 'how many orders?' questions"
+            " — do NOT use sql COUNT(*) or list_entities for order counts."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "metric_name": {
                     "type": "string",
-                    "enum": ["revenue", "ad_spend", "rto_rate", "contribution_margin", "cac", "average_order_value", "refunds", "roas", "orders"],
+                    "enum": [
+                        "revenue",
+                        "ad_spend",
+                        "rto_rate",
+                        "contribution_margin",
+                        "cac",
+                        "average_order_value",
+                        "refunds",
+                        "roas",
+                        "orders",
+                    ],
                 },
                 "group_by": {
                     "type": "string",
@@ -161,6 +175,7 @@ def dispatch_tool(
 
 def _list_entities(db: Session, merchant_id: str, entity_type: str, limit: int = 20) -> dict:
     from sqlalchemy import text
+
     rows = db.execute(
         text("""
             SELECT entity_id, natural_key, source, attributes, last_seen
@@ -173,16 +188,16 @@ def _list_entities(db: Session, merchant_id: str, entity_type: str, limit: int =
     ).fetchall()
     return {
         "entities": [
-            {"entity_id": str(r[0]), "natural_key": r[1], "source": r[2],
-             "attributes": r[3], "last_seen": str(r[4])}
+            {"entity_id": str(r[0]), "natural_key": r[1], "source": r[2], "attributes": r[3], "last_seen": str(r[4])}
             for r in rows
         ],
         "returned": len(rows),
     }
 
 
-def _query_metric(db: Session, merchant_id: str, metric_name: str,
-                  group_by: str | None = None, time_range: str = "30d") -> dict:
+def _query_metric(
+    db: Session, merchant_id: str, metric_name: str, group_by: str | None = None, time_range: str = "30d"
+) -> dict:
     result = query_metric(db, merchant_id, metric_name, group_by, time_range)
     return {
         "rows": result.rows,
@@ -204,7 +219,7 @@ def _get_raw(db: Session, merchant_id: str, provenance_id: str) -> dict:
     table_hint = parts[0] if len(parts) > 1 else ""
 
     # Try tables with matching hint first
-    ordered = sorted(_ALLOWED_RAW_TABLES, key=lambda t: (0 if table_hint in t else 1))
+    ordered = sorted(_ALLOWED_RAW_TABLES, key=lambda t: 0 if table_hint in t else 1)
     for table in ordered:
         payload = get_raw_payload(db, table, provenance_id, merchant_id)
         if payload is not None:
@@ -213,9 +228,11 @@ def _get_raw(db: Session, merchant_id: str, provenance_id: str) -> dict:
     return {"error": f"No raw record found for provenance_id '{provenance_id}'"}
 
 
-def _compare(db: Session, merchant_id: str, metric_name: str,
-             period_a: str, period_b: str, group_by: str | None = None) -> dict:
+def _compare(
+    db: Session, merchant_id: str, metric_name: str, period_a: str, period_b: str, group_by: str | None = None
+) -> dict:
     from app.warehouse.metrics.catalog import METRIC_VALUE_COL
+
     a = query_metric(db, merchant_id, metric_name, group_by, period_a)
     b = query_metric(db, merchant_id, metric_name, group_by, period_b)
     value_col = METRIC_VALUE_COL.get(metric_name, metric_name)
@@ -232,16 +249,20 @@ def _compare(db: Session, merchant_id: str, metric_name: str,
 
     # Give computed values distinct synthetic provenance IDs so the model can cite each independently
     delta_id = f"computed:{metric_name}:delta:{period_a}vs{period_b}"
-    pct_id   = f"computed:{metric_name}:pct_change:{period_a}vs{period_b}"
+    pct_id = f"computed:{metric_name}:pct_change:{period_a}vs{period_b}"
     all_ids = list(set(a.provenance_ids + b.provenance_ids + [delta_id, pct_id]))
 
     return {
         "period_a": {
-            "range": period_a, "value": val_a, "rows": a.rows,
+            "range": period_a,
+            "value": val_a,
+            "rows": a.rows,
             "provenance_ids": a.provenance_ids,
         },
         "period_b": {
-            "range": period_b, "value": val_b, "rows": b.rows,
+            "range": period_b,
+            "value": val_b,
+            "rows": b.rows,
             "provenance_ids": b.provenance_ids,
         },
         "delta": delta,
@@ -262,6 +283,7 @@ def _write_note(db: Session, merchant_id: str, entity_natural_key: str, note: st
     from datetime import datetime
 
     from sqlalchemy import text
+
     result = db.execute(
         text("""
             UPDATE entities

@@ -1,4 +1,5 @@
 """Connector Protocol and base implementation with retry, rate-limiting, and cursor management."""
+
 import logging
 import time
 import uuid
@@ -57,10 +58,12 @@ class BaseConnector(ABC):
     @retry(
         stop=stop_after_attempt(5),
         wait=wait_exponential(multiplier=1, min=1, max=30),
-        retry=retry_if_exception(lambda e: (
-            isinstance(e, httpx.TimeoutException) or
-            (isinstance(e, httpx.HTTPStatusError) and e.response.status_code in (429, 500, 502, 503, 504))
-        )),
+        retry=retry_if_exception(
+            lambda e: (
+                isinstance(e, httpx.TimeoutException)
+                or (isinstance(e, httpx.HTTPStatusError) and e.response.status_code in (429, 500, 502, 503, 504))
+            )
+        ),
         reraise=True,
     )
     def _get(self, url: str, **kwargs) -> httpx.Response:
@@ -77,10 +80,12 @@ class BaseConnector(ABC):
     @retry(
         stop=stop_after_attempt(5),
         wait=wait_exponential(multiplier=1, min=1, max=30),
-        retry=retry_if_exception(lambda e: (
-            isinstance(e, httpx.TimeoutException) or
-            (isinstance(e, httpx.HTTPStatusError) and e.response.status_code in (429, 500, 502, 503, 504))
-        )),
+        retry=retry_if_exception(
+            lambda e: (
+                isinstance(e, httpx.TimeoutException)
+                or (isinstance(e, httpx.HTTPStatusError) and e.response.status_code in (429, 500, 502, 503, 504))
+            )
+        ),
         reraise=True,
     )
     def _post(self, url: str, **kwargs) -> httpx.Response:

@@ -84,7 +84,7 @@ A second round of hardening run via the `/harden` slash command (`.claude/comman
 - **`contribution_margin` dropping refunds** — `_upsert_refund` now resolves and stores `order_number` from the linked order entity (was NULL → refunds fell out of the CM CTE's order_number join).
 - **`rto_rate` time-window filter** — switched from `en.first_seen` to `ev.occurred_at` so 7d vs 90d queries return different values on seed data.
 - **`BaseAgent` exception path** — `db.rollback()` added before the second `db.commit()` so a failed `_execute` cannot half-commit partial state.
-- **Shopify `_paginate`** — `item['id']` → `item.get('id', 'unknown')` to prevent `KeyError` on malformed payloads (matches Meta's defensive style).
+- **Shopify `_paginate`** — missing `id` field now raises `ValueError` to prevent silent data corruption (phantom entities keyed to "unknown" would collide on upsert).
 - **Shiprocket `_pull_shipments`** — hardcoded `100` replaced with `params["per_page"]` in the stop condition; changing `per_page` no longer silently mis-paginates.
 - **Shiprocket `auth_status`** — dead `== 200` check removed (raise_for_status already raised on non-200); returns `True` directly.
 - **Meta connector** — `datetime.utcnow()` → `datetime.now(timezone.utc)` (deprecated in 3.12).

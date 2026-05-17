@@ -3,6 +3,7 @@
 Pure-function tests run without a DB. DB-gated tests use the live seed data
 and verify that each normalizer produces entities/events and is idempotent.
 """
+
 import os
 
 import pytest
@@ -17,41 +18,49 @@ MERCHANT = "demo"
 # Pure helpers (no DB)
 # ---------------------------------------------------------------------------
 
+
 class TestShopifyHelpers:
     def test_parse_dt_valid_iso(self):
         from app.normalize.shopify_to_universal import _parse_dt
+
         dt = _parse_dt("2024-01-15T10:30:00+05:30")
         assert dt is not None
         assert dt.year == 2024 and dt.month == 1 and dt.day == 15
 
     def test_parse_dt_z_suffix(self):
         from app.normalize.shopify_to_universal import _parse_dt
+
         dt = _parse_dt("2024-03-01T00:00:00Z")
         assert dt is not None
         assert dt.tzinfo is not None
 
     def test_parse_dt_none(self):
         from app.normalize.shopify_to_universal import _parse_dt
+
         assert _parse_dt(None) is None
 
     def test_parse_dt_empty_string(self):
         from app.normalize.shopify_to_universal import _parse_dt
+
         assert _parse_dt("") is None
 
 
 class TestShiprocketHelpers:
     def test_is_rto_positive(self):
         from app.normalize.shiprocket_to_universal import _is_rto
+
         for status in ["RTO", "rto initiated", "returned", "Return To Origin", "RTO Delivered"]:
             assert _is_rto(status), f"Expected {status!r} to be RTO"
 
     def test_is_rto_negative(self):
         from app.normalize.shiprocket_to_universal import _is_rto
+
         for status in ["delivered", "in transit", "out for delivery", "pending", ""]:
             assert not _is_rto(status), f"Expected {status!r} to NOT be RTO"
 
     def test_is_rto_case_insensitive(self):
         from app.normalize.shiprocket_to_universal import _is_rto
+
         assert _is_rto("RTO INITIATED")
         assert _is_rto("Rto In Transit")
 
@@ -60,12 +69,14 @@ class TestShiprocketHelpers:
 # DB-gated: Shopify normalizer
 # ---------------------------------------------------------------------------
 
+
 @pytestmark_db
 class TestShopifyNormalizer:
     def test_normalize_orders_creates_order_entities(self):
+        from sqlalchemy import text
+
         from app.normalize.shopify_to_universal import normalize_orders
         from app.warehouse.db import SessionLocal
-        from sqlalchemy import text
 
         with SessionLocal() as db:
             normalize_orders(db, MERCHANT)
@@ -76,9 +87,10 @@ class TestShopifyNormalizer:
         assert n > 0, "No order entities after normalize_orders"
 
     def test_normalize_orders_creates_revenue_events(self):
+        from sqlalchemy import text
+
         from app.normalize.shopify_to_universal import normalize_orders
         from app.warehouse.db import SessionLocal
-        from sqlalchemy import text
 
         with SessionLocal() as db:
             normalize_orders(db, MERCHANT)
@@ -90,9 +102,10 @@ class TestShopifyNormalizer:
 
     def test_normalize_orders_idempotent(self):
         """Running twice must not change entity or event counts."""
+        from sqlalchemy import text
+
         from app.normalize.shopify_to_universal import normalize_orders
         from app.warehouse.db import SessionLocal
-        from sqlalchemy import text
 
         with SessionLocal() as db:
             normalize_orders(db, MERCHANT)
@@ -120,9 +133,10 @@ class TestShopifyNormalizer:
         assert n_events_1 == n_events_2, "normalize_orders is not idempotent for events"
 
     def test_normalize_refunds_creates_negative_events(self):
+        from sqlalchemy import text
+
         from app.normalize.shopify_to_universal import normalize_refunds
         from app.warehouse.db import SessionLocal
-        from sqlalchemy import text
 
         with SessionLocal() as db:
             normalize_refunds(db, MERCHANT)
@@ -145,12 +159,14 @@ class TestShopifyNormalizer:
 # DB-gated: Meta normalizer
 # ---------------------------------------------------------------------------
 
+
 @pytestmark_db
 class TestMetaNormalizer:
     def test_normalize_campaigns_creates_ad_campaign_entities(self):
+        from sqlalchemy import text
+
         from app.normalize.meta_to_universal import normalize_campaigns
         from app.warehouse.db import SessionLocal
-        from sqlalchemy import text
 
         with SessionLocal() as db:
             normalize_campaigns(db, MERCHANT)
@@ -161,9 +177,10 @@ class TestMetaNormalizer:
         assert n > 0
 
     def test_normalize_insights_creates_ad_spend_events(self):
+        from sqlalchemy import text
+
         from app.normalize.meta_to_universal import normalize_insights
         from app.warehouse.db import SessionLocal
-        from sqlalchemy import text
 
         with SessionLocal() as db:
             normalize_insights(db, MERCHANT)
@@ -174,9 +191,10 @@ class TestMetaNormalizer:
         assert n > 0
 
     def test_normalize_insights_idempotent(self):
+        from sqlalchemy import text
+
         from app.normalize.meta_to_universal import normalize_insights
         from app.warehouse.db import SessionLocal
-        from sqlalchemy import text
 
         with SessionLocal() as db:
             normalize_insights(db, MERCHANT)
@@ -199,12 +217,14 @@ class TestMetaNormalizer:
 # DB-gated: Shiprocket normalizer
 # ---------------------------------------------------------------------------
 
+
 @pytestmark_db
 class TestShiprocketNormalizer:
     def test_normalize_shipments_creates_shipment_entities(self):
+        from sqlalchemy import text
+
         from app.normalize.shiprocket_to_universal import normalize_shipments
         from app.warehouse.db import SessionLocal
-        from sqlalchemy import text
 
         with SessionLocal() as db:
             normalize_shipments(db, MERCHANT)
@@ -215,9 +235,10 @@ class TestShiprocketNormalizer:
         assert n > 0
 
     def test_normalize_shipments_creates_shipping_cost_events(self):
+        from sqlalchemy import text
+
         from app.normalize.shiprocket_to_universal import normalize_shipments
         from app.warehouse.db import SessionLocal
-        from sqlalchemy import text
 
         with SessionLocal() as db:
             normalize_shipments(db, MERCHANT)
@@ -228,9 +249,10 @@ class TestShiprocketNormalizer:
         assert n > 0
 
     def test_normalize_shipments_rto_entities_have_flag(self):
+        from sqlalchemy import text
+
         from app.normalize.shiprocket_to_universal import normalize_shipments
         from app.warehouse.db import SessionLocal
-        from sqlalchemy import text
 
         with SessionLocal() as db:
             normalize_shipments(db, MERCHANT)
@@ -246,9 +268,10 @@ class TestShiprocketNormalizer:
         assert n > 0, "No RTO shipments found in seed data"
 
     def test_normalize_shipments_idempotent(self):
+        from sqlalchemy import text
+
         from app.normalize.shiprocket_to_universal import normalize_shipments
         from app.warehouse.db import SessionLocal
-        from sqlalchemy import text
 
         with SessionLocal() as db:
             normalize_shipments(db, MERCHANT)
@@ -271,6 +294,7 @@ class TestShiprocketNormalizer:
 # DB-gated: Identity resolver
 # ---------------------------------------------------------------------------
 
+
 @pytestmark_db
 class TestIdentityResolver:
     def test_resolve_all_returns_counts(self):
@@ -283,9 +307,10 @@ class TestIdentityResolver:
         assert "order_campaign" in counts
 
     def test_resolve_all_links_orders_to_shipments(self):
+        from sqlalchemy import text
+
         from app.normalize.identity import resolve_all
         from app.warehouse.db import SessionLocal
-        from sqlalchemy import text
 
         with SessionLocal() as db:
             resolve_all(db, MERCHANT)
@@ -299,9 +324,10 @@ class TestIdentityResolver:
         assert n > 0, "No order→shipment links created by identity resolver"
 
     def test_resolve_all_idempotent(self):
+        from sqlalchemy import text
+
         from app.normalize.identity import resolve_all
         from app.warehouse.db import SessionLocal
-        from sqlalchemy import text
 
         with SessionLocal() as db:
             resolve_all(db, MERCHANT)

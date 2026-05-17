@@ -4,6 +4,7 @@ Routing: queries go to gpt-4o-mini by default. Eight heuristic signals escalate 
 gpt-4o before the first call. If the cheap model fails citation validation, a
 FrugalGPT-style cascade retries from scratch with gpt-4o.
 """
+
 import json
 import logging
 from pathlib import Path
@@ -32,11 +33,10 @@ def _get_system_prompt() -> str:
     global _system_prompt_cache
     if _system_prompt_cache is None:
         from app.warehouse.db import get_schema_description
+
         # Use replace, not .format(), so literal { } in the template (e.g. JSON examples)
         # don't cause KeyError/IndexError.
-        _system_prompt_cache = _SYSTEM_PROMPT_TEMPLATE.replace(
-            "{warehouse_schema}", get_schema_description()
-        )
+        _system_prompt_cache = _SYSTEM_PROMPT_TEMPLATE.replace("{warehouse_schema}", get_schema_description())
     return _system_prompt_cache
 
 
@@ -72,11 +72,10 @@ def get_client():
 
     if settings.openai_api_key and settings.openai_api_key != "dummy":
         import openai
+
         _client = openai.OpenAI(api_key=settings.openai_api_key)
     else:
-        raise RuntimeError(
-            "No LLM API key found. Set OPENAI_API_KEY in .env"
-        )
+        raise RuntimeError("No LLM API key found. Set OPENAI_API_KEY in .env")
 
     return _client
 
@@ -98,19 +97,22 @@ def run_chat(
 
 # ── OpenAI backend ────────────────────────────────────────────────────────────
 
+
 def _openai_tools() -> list[dict]:
     """Convert tool definitions to OpenAI function-calling format."""
     out = []
     for t in TOOL_DEFINITIONS:
         schema = t.get("input_schema", {})
-        out.append({
-            "type": "function",
-            "function": {
-                "name": t["name"],
-                "description": t["description"],
-                "parameters": schema,
-            },
-        })
+        out.append(
+            {
+                "type": "function",
+                "function": {
+                    "name": t["name"],
+                    "description": t["description"],
+                    "parameters": schema,
+                },
+            }
+        )
     return out
 
 
@@ -123,9 +125,7 @@ def _run_openai(question, db, merchant_id, history, decision: RoutingDecision):
     # Cascade only on citation failures, not infrastructure failures (max_turns, empty_response,
     # tool_parse_error, finish:length). Infrastructure failures won't be fixed by a smarter model.
     _INFRA_PREFIXES = ("max_turns", "empty_response", "tool_parse_error", "finish:", "max_retries")
-    infra_failure = any(
-        i.startswith(_INFRA_PREFIXES) for i in (result["issues"] or [])
-    )
+    infra_failure = any(i.startswith(_INFRA_PREFIXES) for i in (result["issues"] or []))
     if not result["all_citations_valid"] and not infra_failure and not decision.escalated and decision.tier == "cheap":
         failure_summary = "; ".join(result["issues"][:2])
         decision = _router.escalate(decision, failure_summary)
@@ -176,19 +176,24 @@ def _openai_attempt(question, db, merchant_id, history, model, oai_tools, client
                         prov = result.get("provenance_ids") or result.get("all_provenance_ids") or []
                         all_provenance_ids.extend(prov)
                     _collect_tool_numbers(result, tool_value_set)
-                    messages.append({
-                        "role": "tool",
-                        "tool_call_id": tc.id,
-                        "content": json.dumps(result, default=str),
-                    })
+                    messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": tc.id,
+                            "content": json.dumps(result, default=str),
+                        }
+                    )
 
             elif finish == "stop":
                 raw_answer = msg.content or ""
                 if not raw_answer.strip():
                     return _timeout_result(tool_trace, all_provenance_ids, reason="empty_response")
                 cleaned, valid, issues = validate_and_clean(
-                    raw_answer, all_provenance_ids, db,
-                    merchant_id=merchant_id, tool_value_set=tool_value_set,
+                    raw_answer,
+                    all_provenance_ids,
+                    db,
+                    merchant_id=merchant_id,
+                    tool_value_set=tool_value_set,
                 )
                 if valid or attempt >= MAX_RETRIES:
                     return _result(cleaned, valid, issues, tool_trace, all_provenance_ids)
@@ -206,6 +211,7 @@ def _openai_attempt(question, db, merchant_id, history, model, oai_tools, client
 
 
 # ── Shared helpers ────────────────────────────────────────────────────────────
+
 
 def _retry_prompt(issues: list[str]) -> str:
     return (

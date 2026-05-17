@@ -3,6 +3,7 @@
 Uses pytest-httpx to intercept httpx calls; no real credentials needed.
 Exercises: correct RawRecord parsing, multi-page pagination, retry on 429.
 """
+
 import json
 from pathlib import Path
 
@@ -10,11 +11,10 @@ import pytest
 
 from app.connectors.meta_ads.connector import MetaAdsConnector
 
-_FIXTURE = json.loads(
-    (Path(__file__).parent.parent / "fixtures/meta_ads/insights.json").read_text()
-)
+_FIXTURE = json.loads((Path(__file__).parent.parent / "fixtures/meta_ads/insights.json").read_text())
 
 # ---- fixture / helpers -------------------------------------------------------
+
 
 @pytest.fixture(autouse=True)
 def _patch_settings(monkeypatch):
@@ -27,6 +27,7 @@ def _make_connector() -> MetaAdsConnector:
 
 
 # ---- parsing -----------------------------------------------------------------
+
 
 def test_insights_parse_source_record_id(httpx_mock):
     httpx_mock.add_response(json=_FIXTURE)
@@ -52,6 +53,7 @@ def test_insights_parse_payload_fields(httpx_mock):
 
 
 # ---- pagination --------------------------------------------------------------
+
 
 def test_pagination_stops_when_no_next(httpx_mock):
     # Fixture has no "next" in paging → single request only
@@ -79,6 +81,7 @@ def test_pagination_follows_next_url(httpx_mock):
 
 # ---- retry on 429 ------------------------------------------------------------
 
+
 def test_retry_on_429(httpx_mock):
     httpx_mock.add_response(status_code=429, headers={"Retry-After": "0"})
     httpx_mock.add_response(json=_FIXTURE)
@@ -89,6 +92,7 @@ def test_retry_on_429(httpx_mock):
 
 
 # ---- other resources ---------------------------------------------------------
+
 
 def test_campaigns_parse(httpx_mock):
     campaign_fixture = {

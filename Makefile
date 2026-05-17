@@ -44,7 +44,7 @@ test:
 	$(DB) $(DB_ANALYTICS) pytest -x -q
 
 eval:
-	pytest tests/eval/ -v -s
+	$(DB_BOOTSTRAP) pytest tests/eval/ -v -s
 
 bench:
 	$(DB) python3 scripts/bench_ingest.py --merchants 10 --orders-per-merchant 20

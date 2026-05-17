@@ -1,4 +1,5 @@
 """Typed metric definitions — safe, pre-validated queries returning rows + provenance IDs."""
+
 from dataclasses import dataclass
 from typing import Any
 
@@ -47,7 +48,6 @@ METRIC_SQL: dict[str, str] = {
             ) AS provenance_ids
         FROM agg
     """,
-
     "orders": """
         WITH agg AS (
             SELECT
@@ -72,7 +72,6 @@ METRIC_SQL: dict[str, str] = {
             ) AS provenance_ids
         FROM agg
     """,
-
     "refunds": """
         WITH agg AS (
             SELECT
@@ -99,7 +98,6 @@ METRIC_SQL: dict[str, str] = {
             ) AS provenance_ids
         FROM agg
     """,
-
     # Bug 9 fix: same aggregate-first CTE pattern.
     "ad_spend": """
         WITH agg AS (
@@ -127,7 +125,6 @@ METRIC_SQL: dict[str, str] = {
             ) AS provenance_ids
         FROM agg
     """,
-
     # Bugs 15+16 fix: count denominator from entities (shipment type) so free-shipping orders
     # are included and the rate cannot exceed 100%.  Provenance is fetched via entity_id scalar
     # subquery (entities table, not events).
@@ -174,7 +171,6 @@ METRIC_SQL: dict[str, str] = {
             ) AS provenance_ids
         FROM agg
     """,
-
     # Bug 9 fix: aggregate revenue and shipping CTEs first, then assemble provenance
     # via scalar subqueries on collected event_ids.
     # Bug 14 fix: {time_filter} added to shipping CTE so it respects the same window
@@ -225,12 +221,13 @@ METRIC_SQL: dict[str, str] = {
         ORDER BY contribution_margin ASC
         LIMIT 100
     """,
-
     "average_order_value": """
         WITH agg AS (
             SELECT
                 {group_by_select}
-                SUM(ev.amount) / NULLIF(COUNT(DISTINCT CASE WHEN ev.event_type = 'order_revenue' THEN ev.entity_id END), 0) AS average_order_value,
+                SUM(ev.amount) / NULLIF(
+                    COUNT(DISTINCT CASE WHEN ev.event_type = 'order_revenue' THEN ev.entity_id END), 0
+                ) AS average_order_value,
                 COUNT(DISTINCT CASE WHEN ev.event_type = 'order_revenue' THEN ev.entity_id END) AS order_count,
                 SUM(ev.amount) AS total_revenue,
                 ARRAY_AGG(DISTINCT ev.event_id::text) AS event_ids
@@ -252,7 +249,6 @@ METRIC_SQL: dict[str, str] = {
             ) AS provenance_ids
         FROM agg
     """,
-
     "cac": """
         WITH spend AS (
             SELECT SUM(ev.amount) AS total_spend,
@@ -281,7 +277,6 @@ METRIC_SQL: dict[str, str] = {
             ) AS provenance_ids
         FROM spend, orders
     """,
-
     "roas": """
         WITH revenue AS (
             SELECT
@@ -315,7 +310,10 @@ METRIC_SQL: dict[str, str] = {
                 SELECT ARRAY_AGG(DISTINCT raw_record_id)
                 FROM provenance
                 WHERE row_table = 'events'
-                  AND row_pk = ANY(COALESCE(revenue.event_ids, ARRAY[]::text[]) || COALESCE(spend.event_ids, ARRAY[]::text[]))
+                  AND row_pk = ANY(
+                      COALESCE(revenue.event_ids, ARRAY[]::text[])
+                      || COALESCE(spend.event_ids, ARRAY[]::text[])
+                  )
             ) AS provenance_ids
         FROM revenue, spend
     """,
@@ -335,7 +333,7 @@ GROUP_BY_EXPRESSIONS = {
 # keys because the metric's entity (e.g. order) doesn't carry the requested attribute
 # (e.g. campaign name). We detect this at query time and raise an explicit error.
 GROUP_BY_VALID_FOR_METRIC: dict[str, set[str]] = {
-    "campaign": {"ad_spend"},     # only ad_spend entities carry campaign names
+    "campaign": {"ad_spend"},  # only ad_spend entities carry campaign names
     "courier": {"rto_rate"},  # courier lives on shipment entities; contribution_margin SQL has no group_by placeholders
     # "date", "week", "month" are valid for any event-based metric — no restriction
 }

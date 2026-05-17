@@ -1,4 +1,5 @@
 """Create ingest_cursors table."""
+
 from sqlalchemy import text
 
 from app.warehouse.db import engine
@@ -6,7 +7,8 @@ from app.warehouse.db import engine
 
 def run():
     with engine.connect() as conn:
-        conn.execute(text("""
+        conn.execute(
+            text("""
             CREATE TABLE IF NOT EXISTS ingest_cursors (
                 merchant_id TEXT NOT NULL,
                 connector TEXT NOT NULL,
@@ -15,10 +17,12 @@ def run():
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 PRIMARY KEY (merchant_id, connector, resource)
             )
-        """))
+        """)
+        )
         conn.execute(text("ALTER TABLE ingest_cursors ENABLE ROW LEVEL SECURITY"))
         conn.execute(text("ALTER TABLE ingest_cursors FORCE ROW LEVEL SECURITY"))
-        conn.execute(text("""
+        conn.execute(
+            text("""
             DO $$
             BEGIN
                 IF NOT EXISTS (
@@ -31,7 +35,8 @@ def run():
                 END IF;
             END
             $$
-        """))
+        """)
+        )
         conn.commit()
     print("ingest_cursors table ready.")
 

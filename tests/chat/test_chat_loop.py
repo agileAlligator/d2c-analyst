@@ -3,6 +3,7 @@
 All tool dispatch, metric queries, provenance lookups, and citation validation
 run against real logic (not mocked). Only the LLM response is pre-recorded.
 """
+
 import json as _json
 import os
 from unittest.mock import MagicMock, patch
@@ -52,10 +53,16 @@ class TestChatLoopIntegration:
 
             if call_count[0] == 1:
                 return _make_response(
-                    tool_calls=[_make_tool_call("query_metric", "tu_001", {
-                        "metric_name": "revenue",
-                        "time_range": "30d",
-                    })],
+                    tool_calls=[
+                        _make_tool_call(
+                            "query_metric",
+                            "tu_001",
+                            {
+                                "metric_name": "revenue",
+                                "time_range": "30d",
+                            },
+                        )
+                    ],
                     finish_reason="tool_calls",
                 )
 
@@ -112,10 +119,16 @@ class TestChatLoopIntegration:
 
             if call_count[0] == 1:
                 return _make_response(
-                    tool_calls=[_make_tool_call("query_metric", "tu_001", {
-                        "metric_name": "revenue",
-                        "time_range": "30d",
-                    })],
+                    tool_calls=[
+                        _make_tool_call(
+                            "query_metric",
+                            "tu_001",
+                            {
+                                "metric_name": "revenue",
+                                "time_range": "30d",
+                            },
+                        )
+                    ],
                     finish_reason="tool_calls",
                 )
 
@@ -185,9 +198,7 @@ class TestChatLoopIntegration:
         demo_rev = sum(float(r.get("revenue", 0) or 0) for r in demo_r["rows"])
         demo2_rev = sum(float(r.get("revenue", 0) or 0) for r in demo2_r["rows"])
 
-        assert demo_rev != demo2_rev, (
-            f"RLS isolation broken: demo ({demo_rev}) == demo2 ({demo2_rev})"
-        )
+        assert demo_rev != demo2_rev, f"RLS isolation broken: demo ({demo_rev}) == demo2 ({demo2_rev})"
         assert demo_rev > 0 and demo2_rev > 0, "Both merchants should have non-zero revenue"
 
     def test_cascade_fires_when_cheap_model_fails_citation(self):
@@ -208,10 +219,16 @@ class TestChatLoopIntegration:
             # First call: tool use to get a real provenance ID
             if call_count[0] == 1:
                 return _make_response(
-                    tool_calls=[_make_tool_call("query_metric", "tu_001", {
-                        "metric_name": "revenue",
-                        "time_range": "30d",
-                    })],
+                    tool_calls=[
+                        _make_tool_call(
+                            "query_metric",
+                            "tu_001",
+                            {
+                                "metric_name": "revenue",
+                                "time_range": "30d",
+                            },
+                        )
+                    ],
                     finish_reason="tool_calls",
                 )
 
@@ -240,8 +257,7 @@ class TestChatLoopIntegration:
         cheap = RoutingDecision(model="gpt-4o-mini", tier="cheap", reason="default")
         smart = RoutingDecision(model="gpt-4o", tier="smart", reason="cascade:uncited", escalated=True)
 
-        with patch("app.chat.loop.get_client") as mock_get_client, \
-             patch("app.chat.loop._router") as mock_router:
+        with patch("app.chat.loop.get_client") as mock_get_client, patch("app.chat.loop._router") as mock_router:
             mock_client = MagicMock()
             mock_client.chat.completions.create.side_effect = fake_create
             mock_get_client.return_value = mock_client
@@ -273,14 +289,20 @@ class TestChatLoopIntegration:
         def fake_create(**kwargs):
             call_count[0] += 1
             return _make_response(
-                tool_calls=[_make_tool_call("list_entities", f"tu_{call_count[0]:03d}", {
-                    "entity_type": "order", "limit": 1,
-                })],
+                tool_calls=[
+                    _make_tool_call(
+                        "list_entities",
+                        f"tu_{call_count[0]:03d}",
+                        {
+                            "entity_type": "order",
+                            "limit": 1,
+                        },
+                    )
+                ],
                 finish_reason="tool_calls",
             )
 
-        with patch("app.chat.loop.get_client") as mock_get_client, \
-             patch("app.chat.loop._router") as mock_router:
+        with patch("app.chat.loop.get_client") as mock_get_client, patch("app.chat.loop._router") as mock_router:
             mock_client = MagicMock()
             mock_client.chat.completions.create.side_effect = fake_create
             mock_get_client.return_value = mock_client
@@ -291,9 +313,7 @@ class TestChatLoopIntegration:
                 result = run_chat("What is my revenue?", db, "demo")
 
         mock_router.escalate.assert_not_called()
-        assert call_count[0] == MAX_TURNS, (
-            f"Infra failure cascaded: expected {MAX_TURNS} calls, got {call_count[0]}"
-        )
+        assert call_count[0] == MAX_TURNS, f"Infra failure cascaded: expected {MAX_TURNS} calls, got {call_count[0]}"
         assert "max_turns" in result["issues"][0]
 
     def test_max_turns_returns_invalid_citation(self):
@@ -307,10 +327,16 @@ class TestChatLoopIntegration:
             call_count[0] += 1
             # Always return a tool call — loop spins until MAX_TURNS
             return _make_response(
-                tool_calls=[_make_tool_call("list_entities", f"tu_{call_count[0]:03d}", {
-                    "entity_type": "order",
-                    "limit": 1,
-                })],
+                tool_calls=[
+                    _make_tool_call(
+                        "list_entities",
+                        f"tu_{call_count[0]:03d}",
+                        {
+                            "entity_type": "order",
+                            "limit": 1,
+                        },
+                    )
+                ],
                 finish_reason="tool_calls",
             )
 
@@ -324,6 +350,4 @@ class TestChatLoopIntegration:
 
         assert result["all_citations_valid"] is False
         assert "max_turns" in result["issues"][0]
-        assert call_count[0] == MAX_TURNS, (
-            f"Expected exactly MAX_TURNS={MAX_TURNS} calls, got {call_count[0]}"
-        )
+        assert call_count[0] == MAX_TURNS, f"Expected exactly MAX_TURNS={MAX_TURNS} calls, got {call_count[0]}"

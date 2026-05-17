@@ -23,6 +23,7 @@ class Base(DeclarativeBase):
 
 # ── Raw tables (immutable, append-only) ──────────────────────────────────────
 
+
 class RawShopifyOrder(Base):
     __tablename__ = "raw_shopify_orders"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -102,6 +103,7 @@ class RawShiprocketShipment(Base):
 
 # ── Universal entity model ────────────────────────────────────────────────────
 
+
 class EntityType(StrEnum):
     order = "order"
     customer = "customer"
@@ -156,27 +158,31 @@ class Link(Base):
     link_type = Column(String, nullable=False)  # e.g. "order_shipment", "order_campaign"
     confidence = Column(Float, nullable=False, default=1.0)
     method = Column(String, nullable=False)  # "order_id_match", "utm_match", etc.
-    __table_args__ = (
-        UniqueConstraint("merchant_id", "from_entity", "to_entity", "link_type", name="uq_link"),
-    )
+    __table_args__ = (UniqueConstraint("merchant_id", "from_entity", "to_entity", "link_type", name="uq_link"),)
 
 
 class Provenance(Base):
     """Maps every normalized row back to its source raw row(s)."""
+
     __tablename__ = "provenance"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     merchant_id = Column(String, nullable=False, index=True)
     # what normalized row this covers
-    row_table = Column(String, nullable=False)   # "events" or "entities"
-    row_pk = Column(String, nullable=False)       # the UUID of the event/entity
+    row_table = Column(String, nullable=False)  # "events" or "entities"
+    row_pk = Column(String, nullable=False)  # the UUID of the event/entity
     # where it came from
-    raw_table = Column(String, nullable=False)    # "raw_shopify_orders"
+    raw_table = Column(String, nullable=False)  # "raw_shopify_orders"
     raw_record_id = Column(String, nullable=False)  # source_record_id from raw
     transform_id = Column(String, nullable=False)  # name of the normalizer function
     ingested_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     __table_args__ = (
         UniqueConstraint(
-            "merchant_id", "row_table", "row_pk", "raw_table", "raw_record_id", "transform_id",
+            "merchant_id",
+            "row_table",
+            "row_pk",
+            "raw_table",
+            "raw_record_id",
+            "transform_id",
             name="uq_provenance_dedup",
         ),
         Index("ix_provenance_row", "row_table", "row_pk"),
@@ -185,6 +191,7 @@ class Provenance(Base):
 
 
 # ── Agent run logs ────────────────────────────────────────────────────────────
+
 
 class AgentRun(Base):
     __tablename__ = "agent_runs"
@@ -200,6 +207,7 @@ class AgentRun(Base):
 
 # ── Ingest job queue ──────────────────────────────────────────────────────────
 
+
 class IngestJob(Base):
     __tablename__ = "ingest_jobs"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -212,6 +220,4 @@ class IngestJob(Base):
     started_at = Column(DateTime, nullable=True)
     finished_at = Column(DateTime, nullable=True)
     error = Column(Text, nullable=True)
-    __table_args__ = (
-        Index("ix_ingest_jobs_pending", "status", "created_at"),
-    )
+    __table_args__ = (Index("ix_ingest_jobs_pending", "status", "created_at"),)

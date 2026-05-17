@@ -1,4 +1,5 @@
 """Tests for MarginWatchAgent — fully offline (no DB required)."""
+
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -164,9 +165,7 @@ class TestRaisePriceProposal:
                 "shipping_cost": 300.0,
                 "rto_cost": 208.0,
                 "contribution_margin": -8.03,
-                "line_items": [
-                    {"variant_id": "v999", "price": "500.00", "quantity": 1}
-                ],
+                "line_items": [{"variant_id": "v999", "price": "500.00", "quantity": 1}],
             }
         ]
         agent = self._run(rows)

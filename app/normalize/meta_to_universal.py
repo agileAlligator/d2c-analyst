@@ -1,4 +1,5 @@
 """Normalize raw Meta Ads records into universal entities + events."""
+
 import logging
 from decimal import Decimal
 
@@ -39,14 +40,22 @@ def normalize_campaigns(db: Session, merchant_id: str) -> int:
     for raw in rows:
         p = raw.payload
         natural_key = f"meta:campaign:{p['id']}"
-        entity_id = _upsert_entity(db, merchant_id, "ad_campaign", natural_key, "meta", {
-            "meta_campaign_id": str(p["id"]),
-            "name": p.get("name"),
-            "status": p.get("status"),
-            "objective": p.get("objective"),
-        })
-        prov_record(db, merchant_id, "entities", str(entity_id),
-                    "raw_meta_campaigns", raw.source_record_id, TRANSFORM_ID)
+        entity_id = _upsert_entity(
+            db,
+            merchant_id,
+            "ad_campaign",
+            natural_key,
+            "meta",
+            {
+                "meta_campaign_id": str(p["id"]),
+                "name": p.get("name"),
+                "status": p.get("status"),
+                "objective": p.get("objective"),
+            },
+        )
+        prov_record(
+            db, merchant_id, "entities", str(entity_id), "raw_meta_campaigns", raw.source_record_id, TRANSFORM_ID
+        )
         count += 1
     db.commit()
     return count
@@ -75,25 +84,39 @@ def _upsert_insight(db: Session, merchant_id: str, raw: RawMetaInsight):
     if ad_id and ad_id != "unknown" and ad_id != "":
         entity_key = f"meta:ad:{ad_id}"
         entity_type = "ad_creative"
-        entity_id = _upsert_entity(db, merchant_id, entity_type, entity_key, "meta", {
-            "meta_campaign_id": campaign_id,
-            "name": p.get("campaign_name"),  # preserved so group_by="campaign" still works
-            "adset_id": adset_id,
-            "adset_name": p.get("adset_name"),
-            "ad_id": ad_id,
-            "ad_name": p.get("ad_name"),
-        })
+        entity_id = _upsert_entity(
+            db,
+            merchant_id,
+            entity_type,
+            entity_key,
+            "meta",
+            {
+                "meta_campaign_id": campaign_id,
+                "name": p.get("campaign_name"),  # preserved so group_by="campaign" still works
+                "adset_id": adset_id,
+                "adset_name": p.get("adset_name"),
+                "ad_id": ad_id,
+                "ad_name": p.get("ad_name"),
+            },
+        )
     elif adset_id and adset_id != "":
         entity_key = f"meta:adset:{adset_id}"
         entity_type = "ad_set"
-        entity_id = _upsert_entity(db, merchant_id, entity_type, entity_key, "meta", {
-            "meta_campaign_id": campaign_id,
-            "name": p.get("campaign_name"),
-            "adset_id": adset_id,
-            "adset_name": p.get("adset_name"),
-            "ad_id": ad_id,
-            "ad_name": p.get("ad_name"),
-        })
+        entity_id = _upsert_entity(
+            db,
+            merchant_id,
+            entity_type,
+            entity_key,
+            "meta",
+            {
+                "meta_campaign_id": campaign_id,
+                "name": p.get("campaign_name"),
+                "adset_id": adset_id,
+                "adset_name": p.get("adset_name"),
+                "ad_id": ad_id,
+                "ad_name": p.get("ad_name"),
+            },
+        )
     else:
         # Fallback: campaign-level insight row.  DO NOT overwrite attributes on
         # the campaign entity — normalize_campaigns() already wrote richer data
@@ -101,13 +124,19 @@ def _upsert_insight(db: Session, merchant_id: str, raw: RawMetaInsight):
         # get the id for the event foreign-key without clobbering existing attrs.
         entity_key = f"meta:campaign:{campaign_id}"
         entity_type = "ad_campaign"
-        entity_id = _get_or_create_entity(db, merchant_id, entity_type, entity_key, "meta", {
-            "meta_campaign_id": campaign_id,
-            "name": p.get("campaign_name"),
-        })
+        entity_id = _get_or_create_entity(
+            db,
+            merchant_id,
+            entity_type,
+            entity_key,
+            "meta",
+            {
+                "meta_campaign_id": campaign_id,
+                "name": p.get("campaign_name"),
+            },
+        )
 
-    prov_record(db, merchant_id, "entities", str(entity_id),
-                "raw_meta_insights", raw.source_record_id, TRANSFORM_ID)
+    prov_record(db, merchant_id, "entities", str(entity_id), "raw_meta_insights", raw.source_record_id, TRANSFORM_ID)
 
     spend = Decimal(str(p.get("spend") or "0"))
     occurred_at = _parse_dt(date + "T00:00:00+00:00") if date else None
@@ -121,21 +150,33 @@ def _upsert_insight(db: Session, merchant_id: str, raw: RawMetaInsight):
         purchase_count = _safe_int(
             next((a.get("value") or "0" for a in actions if a.get("action_type") == "purchase"), "0")
         )
-        purchase_value = Decimal(str(_safe_float(
-            next((a.get("value") or "0" for a in action_values if a.get("action_type") == "purchase"), "0")
-        )))
+        purchase_value = Decimal(
+            str(
+                _safe_float(
+                    next((a.get("value") or "0" for a in action_values if a.get("action_type") == "purchase"), "0")
+                )
+            )
+        )
 
-        event_id = _upsert_event(db, merchant_id, entity_id, "ad_spend", occurred_at,
-                                  spend, "INR", None, {
-                                      "impressions": p.get("impressions"),
-                                      "clicks": p.get("clicks"),
-                                      "cpc": p.get("cpc"),
-                                      "cpm": p.get("cpm"),
-                                      "ctr": p.get("ctr"),
-                                      "purchase_count": purchase_count,
-                                      "purchase_value": str(purchase_value),
-                                      "ad_id": ad_id,
-                                      "adset_id": p.get("adset_id"),
-                                  })
-        prov_record(db, merchant_id, "events", str(event_id),
-                    "raw_meta_insights", raw.source_record_id, TRANSFORM_ID)
+        event_id = _upsert_event(
+            db,
+            merchant_id,
+            entity_id,
+            "ad_spend",
+            occurred_at,
+            spend,
+            "INR",
+            None,
+            {
+                "impressions": p.get("impressions"),
+                "clicks": p.get("clicks"),
+                "cpc": p.get("cpc"),
+                "cpm": p.get("cpm"),
+                "ctr": p.get("ctr"),
+                "purchase_count": purchase_count,
+                "purchase_value": str(purchase_value),
+                "ad_id": ad_id,
+                "adset_id": p.get("adset_id"),
+            },
+        )
+        prov_record(db, merchant_id, "events", str(event_id), "raw_meta_insights", raw.source_record_id, TRANSFORM_ID)

@@ -2,6 +2,7 @@
 
 Idempotent: re-running is a no-op (upsert keyed on merchant_id + source_record_id).
 """
+
 import argparse
 import logging
 import uuid
@@ -30,12 +31,12 @@ logger = logging.getLogger(__name__)
 
 # Map (connector_name, resource_type) -> (ORM model, unique constraint name)
 RAW_MODEL_MAP: dict[tuple[str, str], tuple[type, str]] = {
-    ("shopify", "order"):      (RawShopifyOrder,       "uq_raw_shopify_orders"),
-    ("shopify", "product"):    (RawShopifyProduct,     "uq_raw_shopify_products"),
-    ("shopify", "refund"):     (RawShopifyRefund,       "uq_raw_shopify_refunds"),
-    ("shopify", "customer"):   (RawShopifyCustomer,    "uq_raw_shopify_customers"),
-    ("meta_ads", "insight"):   (RawMetaInsight,         "uq_raw_meta_insights"),
-    ("meta_ads", "campaign"):  (RawMetaCampaign,        "uq_raw_meta_campaigns"),
+    ("shopify", "order"): (RawShopifyOrder, "uq_raw_shopify_orders"),
+    ("shopify", "product"): (RawShopifyProduct, "uq_raw_shopify_products"),
+    ("shopify", "refund"): (RawShopifyRefund, "uq_raw_shopify_refunds"),
+    ("shopify", "customer"): (RawShopifyCustomer, "uq_raw_shopify_customers"),
+    ("meta_ads", "insight"): (RawMetaInsight, "uq_raw_meta_insights"),
+    ("meta_ads", "campaign"): (RawMetaCampaign, "uq_raw_meta_campaigns"),
     ("shiprocket", "shipment"): (RawShiprocketShipment, "uq_raw_shiprocket_shipments"),
 }
 
@@ -65,28 +66,31 @@ def run_connector(merchant_id: str, connector_name: str, db: Session) -> int:
                 continue
             model_cls, constraint_name = entry
 
-            stmt = pg_insert(model_cls.__table__).values(
-                id=uuid.uuid4(),
-                merchant_id=merchant_id,
-                source_record_id=record.source_record_id,
-                payload=record.payload,
-                fetched_at=datetime.now(UTC),
-                run_id=run_id,
-            ).on_conflict_do_update(
-                constraint=constraint_name,
-                # Preserve the original payload for provenance round-trip integrity.
-                # APIs sometimes return partial representations on re-fetch (Shopify
-                # lightweight events vs full order fetch); overwriting could corrupt the
-                # source record that citations resolve to. Only update run metadata.
-                set_={"fetched_at": datetime.now(UTC), "run_id": run_id},
+            stmt = (
+                pg_insert(model_cls.__table__)
+                .values(
+                    id=uuid.uuid4(),
+                    merchant_id=merchant_id,
+                    source_record_id=record.source_record_id,
+                    payload=record.payload,
+                    fetched_at=datetime.now(UTC),
+                    run_id=run_id,
+                )
+                .on_conflict_do_update(
+                    constraint=constraint_name,
+                    # Preserve the original payload for provenance round-trip integrity.
+                    # APIs sometimes return partial representations on re-fetch (Shopify
+                    # lightweight events vs full order fetch); overwriting could corrupt the
+                    # source record that citations resolve to. Only update run metadata.
+                    set_={"fetched_at": datetime.now(UTC), "run_id": run_id},
+                )
             )
             db.execute(stmt)
             count += 1
             total += 1
 
             # Update cursor to latest seen timestamp if available
-            ts = (record.payload.get("updated_at") or record.payload.get("date_stop") or
-                  record.payload.get("created_at"))
+            ts = record.payload.get("updated_at") or record.payload.get("date_stop") or record.payload.get("created_at")
             if ts and (latest_cursor is None or ts > latest_cursor):
                 latest_cursor = ts
 

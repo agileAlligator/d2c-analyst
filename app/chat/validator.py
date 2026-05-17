@@ -3,6 +3,7 @@
 Every number in the model's response must be wrapped in <cite ref="ID">value</cite>.
 Numbers without a cite tag get stripped; unresolvable cite refs get an 'unverified' badge.
 """
+
 import logging
 import re
 
@@ -16,37 +17,37 @@ logger = logging.getLogger(__name__)
 CITE_RE = re.compile(r'<cite ref="([^"]+)">([^<]*)</cite>')
 
 # Strips any remaining bare <cite...> or </cite> tags (e.g. malformed GPT output)
-_BARE_CITE_TAG_RE = re.compile(r'</?cite[^>]*>')
+_BARE_CITE_TAG_RE = re.compile(r"</?cite[^>]*>")
 
 # Time-period references that should never require a citation.
 _timeref_re = re.compile(
     # "30 days", "14d", "30 minutes"
-    r'\b\d+\s*(?:days?|weeks?|months?|hours?|minutes?|years?|[dwmh])\b'
+    r"\b\d+\s*(?:days?|weeks?|months?|hours?|minutes?|years?|[dwmh])\b"
     # "30-day", "14-week", "3-month" (hyphenated adjective form)
-    r'|\b\d+-(?:day|week|month|hour|minute|year)s?\b'
+    r"|\b\d+-(?:day|week|month|hour|minute|year)s?\b"
     # "last 30", "past 14", "previous 90", "trailing 7", "rolling 30", "next 30"
     # (include the leading word so the bare digit falls inside the excluded span)
-    r'|\b(?:last|past|previous|trailing|rolling|next)\s+\d+\b',
+    r"|\b(?:last|past|previous|trailing|rolling|next)\s+\d+\b",
     re.IGNORECASE,
 )
 
 # Calendar-date references that should never be stripped. These protect the day-of-month
 # and year digits inside date labels (ISO, written, week-of). Distinct from _timeref_re
 # which covers rolling-window sizes ("30 days", "14d").
-_ISO_DATE_RE = re.compile(r'\b\d{4}-\d{2}-\d{2}\b')
+_ISO_DATE_RE = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
 
 _WRITTEN_DATE_RE = re.compile(
-    r'\b(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|'
-    r'Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|'
-    r'Nov(?:ember)?|Dec(?:ember)?)\s+\d{1,2}(?:,\s*\d{4})?\b',
+    r"\b(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|"
+    r"Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|"
+    r"Nov(?:ember)?|Dec(?:ember)?)\s+\d{1,2}(?:,\s*\d{4})?\b",
     re.IGNORECASE,
 )
 
 _WEEK_LABEL_RE = re.compile(
-    r'\bweek\s+of\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|'
-    r'Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|'
-    r'Nov(?:ember)?|Dec(?:ember)?)\s+\d{1,2}(?:,\s*\d{4})?\b'
-    r'|\bweek\s+(?:starting|ending|of)\s+\d{4}-\d{2}-\d{2}\b',
+    r"\bweek\s+of\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|"
+    r"Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|"
+    r"Nov(?:ember)?|Dec(?:ember)?)\s+\d{1,2}(?:,\s*\d{4})?\b"
+    r"|\bweek\s+(?:starting|ending|of)\s+\d{4}-\d{2}-\d{2}\b",
     re.IGNORECASE,
 )
 
@@ -75,9 +76,9 @@ _PROPER_NOUN_BEFORE = re.compile(r"[A-Z][a-zA-Z]+\s+[A-Z][a-zA-Z]+[\s,\-]*$")
 # regex without duplicating it.  Matches numbers that require a citation:
 # comma-formatted integers, plain integers ≥ 2 digits, and decimals.
 bare_number_re = re.compile(
-    r'\b\d{1,3}(?:,\d{3})+(?:\.\d+)?\b'  # comma-formatted: 30,412
-    r'|\b\d{2,}(?:\.\d+)?\b'              # plain integers ≥ 2 digits
-    r'|\b\d+\.\d+\b'                       # decimals
+    r"\b\d{1,3}(?:,\d{3})+(?:\.\d+)?\b"  # comma-formatted: 30,412
+    r"|\b\d{2,}(?:\.\d+)?\b"  # plain integers ≥ 2 digits
+    r"|\b\d+\.\d+\b"  # decimals
 )
 
 
@@ -161,7 +162,7 @@ def validate_and_clean(
                 if issue_msg not in _seen_issues:
                     issues.append(issue_msg)
                     _seen_issues.add(issue_msg)
-                cleaned = cleaned.replace(cite_tag, f'{value} *(unverified)*')
+                cleaned = cleaned.replace(cite_tag, f"{value} *(unverified)*")
 
         # Also verify the cited numeric value is plausible given what tools returned.
         # Skip this check when the ref is already flagged unresolvable — only one issue
@@ -183,7 +184,7 @@ def validate_and_clean(
                 if not value_ok:
                     issues.append(f"Cited value {value!r} for ref {ref_id!r} not found in tool results")
                     if cite_tag in cleaned:
-                        cleaned = cleaned.replace(cite_tag, f'{value} *(unverified)*')
+                        cleaned = cleaned.replace(cite_tag, f"{value} *(unverified)*")
 
     # 2. Strip bare numbers outside cite tags.
     # NOTE: do NOT strip bare cite tags here — _BARE_CITE_TAG_RE matches valid cite tags
@@ -205,15 +206,15 @@ def validate_and_clean(
     def _replace_bare(m: re.Match) -> str:
         n = m.group(0)
         pos = m.start()
-        ctx_before = cleaned[max(0, pos - 16): pos]
-        ctx_after = cleaned[m.end(): m.end() + 16]
+        ctx_before = cleaned[max(0, pos - 16) : pos]
+        ctx_after = cleaned[m.end() : m.end() + 16]
         if _is_yearlike(n, ctx_before, ctx_after):
             return n
         if any(s <= pos < e for s, e in excluded_spans):
             return n
         # Already flagged unverified by step 1 — don't double-annotate
-        after = cleaned[m.end(): m.end() + 20]
-        if re.match(r'\s*\*\(unverified\)\*', after):
+        after = cleaned[m.end() : m.end() + 20]
+        if re.match(r"\s*\*\(unverified\)\*", after):
             return n
         stripped.append(n)
         return "*(uncited)*"
@@ -243,8 +244,7 @@ def _try_resolve(db: Session, ref_id: str, merchant_id: str) -> bool:
         parts = ref_id.split(":", 1)
         table_hint = parts[0]
         record_hint = parts[1]
-        candidates = [t for t in raw_tables if table_hint in t] + \
-                     [t for t in raw_tables if table_hint not in t]
+        candidates = [t for t in raw_tables if table_hint in t] + [t for t in raw_tables if table_hint not in t]
         all_ids = [(t, record_hint) for t in candidates] + [(t, ref_id) for t in raw_tables]
     else:
         all_ids = [(t, ref_id) for t in raw_tables]

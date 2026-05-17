@@ -22,10 +22,10 @@
 | Chat tool-use loop | ✅ | 6 tools, gpt-4o/gpt-4o-mini via router, 12-turn max, json serialization fixed |
 | Model router | ✅ | HeuristicRouter: 8 signals → gpt-4o-mini or gpt-4o; FrugalGPT cascade on citation fail |
 | Citation validator | ✅ | server-side, always scans bare numbers ≥2 digits (≥10), 2 retries, unverified badge fallback |
-| Margin Watch agent | ✅ | courier switch, ad pause (ROAS 1.45x below 2.0 threshold), price raise proposals; NOT_SENT enforced |
+| Margin Watch agent | ✅ | courier switch, ad pause (ROAS 1.27x below 2.0 threshold), price raise proposals; NOT_SENT enforced |
 | Streamlit UI | ✅ | chat + tool call trace + routing badge (⚡/🧠) |
 | FastAPI | ✅ | /chat, /runs, /health; RoutingInfo in ChatResponse |
-| Seed data | ✅ | demo: 80 orders, 30d Meta (ROAS 1.45x), 80 shipments; demo2: 5 orders for RLS isolation |
+| Seed data | ✅ | demo: 80 orders, 30d Meta (ROAS 1.27x), 80 shipments; demo2: 5 orders for RLS isolation |
 | RLS hardening | ✅ | d2c_app role (NOSUPERUSER NOBYPASSRLS); NullPool + after_begin listener; GUC enforced end-to-end |
 | Eval suite | ✅ | 19 golden questions (incl. 3 adversarial), citation coverage ≥80%, accuracy ~63% on last known run (target ≥70%) |
 | Adversarial hardening | ✅ | 7-round loop; 0 Slytherin points in final round |
@@ -33,7 +33,7 @@
 | Bench script | ✅ | scripts/bench_ingest.py; 200 rows at ~335 rows/sec; make bench |
 | Seed determinism | ✅ | BASE_DATE=2026-05-17 anchor; re-seeds produce identical analytical output |
 | CI | ✅ | GitHub Actions: lint + pytest (eval skipped when OPENAI_API_KEY=dummy) |
-| README | ✅ | All 9 brief questions answered; real agent run log (1.45x ROAS, ₹4,233/month) |
+| README | ✅ | All 9 brief questions answered; real agent run log (1.27x ROAS, ₹4,642/month) |
 
 ## Key decisions
 
@@ -41,7 +41,7 @@
 - **Schema:** raw (immutable) + universal (entities+events+links) + provenance as first-class table
 - **Citation:** server-side validation, not prompt-only — every number resolved against provenance; bare numbers replaced with `*(uncited)*` in the returned text
 - **Model routing:** HeuristicRouter (8 signals) + FrugalGPT cascade; gpt-4o-mini default, gpt-4o on complexity or citation failure
-- **Agent:** Margin Watch — proposes courier switch, ad pause (fires at ROAS 1.45x < 2.0 threshold), price raise; never executes (NOT_SENT: True)
+- **Agent:** Margin Watch — proposes courier switch, ad pause (fires at ROAS 1.27x < 2.0 threshold), price raise; never executes (NOT_SENT: True)
 - **Currency:** INR throughout (assumption documented in README)
 - **Auth:** Shiprocket SHIPROCKET_TOKEN from .env; Shopify private app; Meta long-lived token
 - **Idempotency:** MD5 event IDs keyed on (merchant_id, entity_id, event_type, occurred_at)

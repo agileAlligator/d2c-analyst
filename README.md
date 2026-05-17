@@ -2,7 +2,7 @@
 
 AI analyst + autonomous Margin Watch agent for D2C brands. Chat with your data. Get cited answers. Watch your margins.
 
-On the seed merchant (80 orders, 30-day window), Margin Watch surfaces **~₹4,233/month** in actionable savings: ₹573 from a courier switch (Shadowfax→BlueDart, computed as 23 shipments × (47.8% − 31.2%) × ₹150/RTO), ₹3,608 from pausing underperforming campaigns (ROAS 1.45x, below the 2.0x threshold), and ₹52 from repricing two negative-margin orders.
+On the seed merchant (80 orders, 30-day window), Margin Watch surfaces **~₹4,642/month** in actionable savings: ₹232 from a courier switch (Shadowfax→Delhivery, computed as 23 shipments × (21.7% − 15.0%) × ₹150/RTO), ₹4,358 from pausing underperforming campaigns (ROAS 1.27x, below the 2.0x threshold), and ₹52 from repricing two negative-margin orders.
 
 ---
 
@@ -164,7 +164,7 @@ Why this approach over alternatives: RouteLLM (trained classifier) requires labe
 
 **Why Margin Watch:** it is the only agent where all three connectors are load-bearing simultaneously — remove any one and the proposals degrade. The courier switch needs Shiprocket RTO data. The ad pause needs Meta spend. The price raise needs Shopify revenue *and* Shiprocket shipping cost to compute the actual margin. That cross-connector dependency is what makes it a real test of the universal model, not a single-source query with an LLM wrapper.
 
-The ad-pause proposal on the seed merchant fires because ROAS is 1.45x — below the 2.0x threshold, and below break-even on a blended basis, but not a number a founder running on vibes would notice. They'd see "ads are running," not "ads are generating ₹1.45 for every ₹1 spent on ₹12,026 of ad spend, and pausing the bottom 30% by spend preserves higher-ROAS campaigns while recovering ~₹3,608." That cross-source calculation — spend from Meta, revenue attribution through discount codes, shipping cost from Shiprocket — is what the agent exists to do. On the seed merchant it surfaces ~₹4,233/month. At 10k merchants that compounds — that's the product.
+The ad-pause proposal on the seed merchant fires because ROAS is 1.27x — below the 2.0x threshold, and below break-even on a blended basis, but not a number a founder running on vibes would notice. They'd see "ads are running," not "ads are generating ₹1.27 for every ₹1 spent on ₹14,527 of ad spend, and pausing the bottom 30% by spend preserves higher-ROAS campaigns while recovering ~₹4,358." That cross-source calculation — spend from Meta, revenue attribution through discount codes, shipping cost from Shiprocket — is what the agent exists to do. On the seed merchant it surfaces ~₹4,642/month. At 10k merchants that compounds — that's the product.
 
 Triggered on demand via `make agent`. Scheduling is deliberately deferred — at demo scale, on-demand is honest; production scheduling (cron/Airflow/Cloud Scheduler) belongs outside the app and is enumerated under the scale section.
 
@@ -180,33 +180,35 @@ Every proposal includes:
 - The provenance IDs that support the claim
 - The API call it *would* have made — serialized JSON with `"NOT_SENT": True`
 
-Real run output (`make agent` on seed data):
+Real run output (`make agent` on seed data, BASE_DATE=2026-05-17):
 
 ```
-Blended ROAS (14d): 1.45x (spend ₹12,026)
+[2026-05-17] Flagged 2 orders with negative contribution margin.
+[2026-05-17] Courier 'Shadowfax' has RTO rate 21.7% (5 RTOs).
+[2026-05-17] Blended ROAS (14d): 1.27x (spend ₹14,527)
 
 ### 1. switch_courier — courier:Shadowfax
-**Expected impact:** ₹573
-**Reasoning:** Switching from 'Shadowfax' (RTO rate 47.8%) to 'BlueDart' (RTO rate 31.2%) on 23 shipments could save ~₹573 (47.8% − 31.2% × ₹150/RTO).
-**Provenance:** shipment:8024, shipment:8028, shipment:8026, shipment:8067, shipment:8020
-**Would-do API call:** `{'connector': 'shiprocket', 'action': 'update_courier_preference', 'body': {'preferred_courier': 'BlueDart'}, 'NOT_SENT': True}`
+**Expected impact:** ₹232
+**Reasoning:** Switching from 'Shadowfax' (RTO rate 21.7%) to 'Delhivery' (RTO rate 15.0%) on 23 shipments could save ~₹232 (21.7% − 15.0%) × ₹150/RTO × 23 shipments.
+**Provenance:** shipment:8039, shipment:8041, shipment:8003, shipment:8029, shipment:8026
+**Would-do API call:** `{'connector': 'shiprocket', 'action': 'update_courier_preference', 'body': {'preferred_courier': 'Delhivery'}, 'NOT_SENT': True}`
 
 ### 2. pause_adset — meta:all_campaigns
-**Expected impact:** ₹3,608
-**Reasoning:** Blended ROAS is 1.45x over the last 14 days (₹12,026 spend, ₹17,485 attributed revenue). Pausing the bottom 30% of campaigns by spend could save ~₹3,608 while preserving higher-ROAS campaigns.
-**Provenance:** insight:camp_003:2026-05-05, insight:camp_001:2026-05-11, insight:camp_001:2026-05-05, insight:camp_001:2026-05-04, insight:camp_001:2026-05-12
+**Expected impact:** ₹4,358
+**Reasoning:** Blended ROAS is 1.27x over the last 14 days (₹14,527 spend, ₹18,484 attributed revenue). Pausing the bottom 30% of campaigns by spend could save ~₹4,358 while preserving higher-ROAS campaigns.
+**Provenance:** insight:camp_002:2026-05-16, insight:camp_003:2026-05-12, insight:camp_003:2026-05-08, insight:camp_003:2026-05-14, insight:camp_002:2026-05-07
 **Would-do API call:** `{'connector': 'meta_ads', 'note': 'Pause bottom 30% of campaigns by spend — each requires a separate POST /{ad-set-id} with {"status": "PAUSED"}', 'NOT_SENT': True}`
 
 ### 3. raise_price — order:1027
 **Expected impact:** ₹44
 **Reasoning:** Order 1027 has contribution margin of ₹-43.70 (revenue ₹199.00, shipping ₹151.64, RTO cost ₹91.06). Raising the price by ₹43.70 would move this order to breakeven.
-**Provenance:** order:1027
+**Provenance:** order:5027, shipment:8027
 **Would-do API call:** `{'connector': 'shopify', 'endpoint': 'PUT /admin/api/2024-01/orders/1027.json', 'note': 'Raise price by ₹43.70 to reach breakeven — exact variant must be determined from order line items', 'NOT_SENT': True}`
 
 ### 4. raise_price — order:1063
 **Expected impact:** ₹8
 **Reasoning:** Order 1063 has contribution margin of ₹-8.03 (revenue ₹199.00, shipping ₹101.13, RTO cost ₹105.90). Raising the price by ₹8.03 would move this order to breakeven.
-**Provenance:** order:1063
+**Provenance:** order:5063, shipment:8063
 **Would-do API call:** `{'connector': 'shopify', 'endpoint': 'PUT /admin/api/2024-01/orders/1063.json', 'note': 'Raise price by ₹8.03 to reach breakeven — exact variant must be determined from order line items', 'NOT_SENT': True}`
 ```
 

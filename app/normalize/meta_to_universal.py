@@ -18,6 +18,20 @@ logger = logging.getLogger(__name__)
 TRANSFORM_ID = "meta_normalizer_v1"
 
 
+def _safe_int(s: str) -> int:
+    try:
+        return int(float(s))
+    except (ValueError, TypeError):
+        return 0
+
+
+def _safe_float(s: str) -> float:
+    try:
+        return float(s)
+    except (ValueError, TypeError):
+        return 0.0
+
+
 def normalize_campaigns(db: Session, merchant_id: str) -> int:
     set_merchant(db, merchant_id)
     rows = db.query(RawMetaCampaign).filter_by(merchant_id=merchant_id).all()
@@ -104,12 +118,12 @@ def _upsert_insight(db: Session, merchant_id: str, raw: RawMetaInsight):
         # Insights payload — using actions for revenue is the bug this fixes.
         actions = p.get("actions") or []
         action_values = p.get("action_values") or []
-        purchase_count = int(float(
+        purchase_count = _safe_int(
             next((a.get("value") or "0" for a in actions if a.get("action_type") == "purchase"), "0")
-        ))
-        purchase_value = Decimal(str(
+        )
+        purchase_value = Decimal(str(_safe_float(
             next((a.get("value") or "0" for a in action_values if a.get("action_type") == "purchase"), "0")
-        ))
+        )))
 
         event_id = _upsert_event(db, merchant_id, entity_id, "ad_spend", occurred_at,
                                   spend, "INR", None, {

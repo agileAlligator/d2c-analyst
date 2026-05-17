@@ -14,7 +14,7 @@ MERCHANT_ID = "demo2"
 RNG = Random(99)
 
 # Deterministic anchor — re-seeds produce identical timestamps so README figures stay valid.
-BASE_DATE = datetime(2026, 5, 13, tzinfo=UTC)
+BASE_DATE = datetime(2026, 5, 17, tzinfo=UTC)
 
 
 def _upsert_raw(db, model_class, merchant_id: str, source_record_id: str, **kwargs):

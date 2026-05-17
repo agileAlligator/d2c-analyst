@@ -55,7 +55,7 @@ def _upsert_order(db: Session, merchant_id: str, raw: RawShopifyOrder):
         event_id = _upsert_event(db, merchant_id, entity_id, "order_revenue", occurred_at,
                                   amount, p.get("currency", "INR"), None, {
                                       "subtotal": str(p.get("subtotal_price", "0")),
-                                      "shipping": str(p.get("total_shipping_price_set", {})
+                                      "shipping": str((p.get("total_shipping_price_set") or {})
                                                        .get("shop_money", {}).get("amount", "0")),
                                       "line_items": [
                                           {

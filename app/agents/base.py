@@ -56,9 +56,9 @@ class BaseAgent:
             agent_run.status = "completed"
         except Exception as e:
             logger.exception("Agent %s failed", self.name)
-            agent_run.status = "failed"
             self.log(f"ERROR: {e}")
             self.db.rollback()
+            agent_run.status = "failed"
 
         agent_run.finished_at = datetime.now(UTC)
         agent_run.log_md = self._render_log()

@@ -49,7 +49,7 @@ def _upsert_shipment(db: Session, merchant_id: str, raw: RawShiprocketShipment):
                 "raw_shiprocket_shipments", raw.source_record_id, TRANSFORM_ID)
 
     # Shipping cost event
-    freight = Decimal(str(p.get("freight_charges") or p.get("charges", {}).get("freight_charges", "0") or "0"))
+    freight = Decimal(str(p.get("freight_charges") or (p.get("charges") or {}).get("freight_charges", "0") or "0"))
     occurred_at = _parse_dt(p.get("created_at") or p.get("order_date"))
     if occurred_at and freight > 0:
         event_id = _upsert_event(db, merchant_id, entity_id, "shipping_cost", occurred_at,

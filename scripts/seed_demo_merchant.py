@@ -25,7 +25,7 @@ MERCHANT_ID = "demo"
 RNG = Random(42)
 
 # Deterministic anchor — re-seeds produce identical timestamps so README figures stay valid.
-BASE_DATE = datetime(2026, 5, 13, tzinfo=UTC)
+BASE_DATE = datetime(2026, 5, 17, tzinfo=UTC)
 
 SKUS = [
     ("SKU-001", "Organic Cotton Tee", 799),

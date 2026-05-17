@@ -260,7 +260,7 @@ Run `make seed && make eval` with `OPENAI_API_KEY` set in `.env`.
 
 *(Full question set and assertions in `tests/eval/golden_questions.py`.)*
 
-**Citation enforcement: server-side, all 19 questions. Bare numbers replaced with `*(uncited)*` in output; unresolvable refs replaced with `*(unverified)*`. Accuracy: ~63% on last known run (run `make eval` to regenerate); P50: 2.1s, P95: 28s. Blended cost: ~$0.028/turn.**
+**Citation enforcement: server-side, all 19 questions. Bare numbers replaced with `*(uncited)*` in output; unresolvable refs replaced with `*(unverified)*`. Accuracy: ~63% on last known run (run `make eval` to regenerate); P50: 2.1s, P95: 28s (observed during development, not from a committed benchmark). Blended cost: ~$0.028/turn (estimated; run `make eval` to regenerate).**
 
 **Adversarial hardening (post-v0):** 7-round adversarial loop (Opus adversary → Opus plan → Sonnet implementation → Opus code review). Final round scored 0 points — no citation failures, no verifiable wrong claims, no crashes against 12 targeted attacks. Fixed during the loop: ~20 bugs including date-string stripping, DuckDB JSONB syntax, NULL campaign group fabrication, compare-tool WoW confusion, RTO/refund conflation, write_note SQL, and missing metrics (roas, refunds, orders). The full loop is reproducible via the `/harden` Claude Code slash command (`.claude/commands/harden.md`) — 5 parallel Opus audit agents → triage → Sonnet fix agents → 3 parallel Opus reviewers, repeated until CLEAN.
 
@@ -268,12 +268,12 @@ Run `make seed && make eval` with `OPENAI_API_KEY` set in `.env`.
 
 `*` = graceful "no data available" response. `⚠` = derived metric with no dedicated provenance anchor; validator retried but issued a ⚠ badge.
 
-**Router accuracy (21 unit tests, 50 hand-labeled queries):**
+**Router accuracy (21 unit tests covering all 8 signals; production accuracy unverified on live traffic):**
 
 | Tier | Traffic share | Correct routes | Cascade triggered |
 |---|---|---|---|
-| `gpt-4o-mini` (cheap) | ~55% | 92% | 8% escalate to 4o |
-| `gpt-4o` (smart) | ~45% | 100% | — |
+| `gpt-4o-mini` (cheap) | ~55% | — | — |
+| `gpt-4o` (smart) | ~45% | — | — |
 
 **A known failure — the validator catching a derived metric:**
 
@@ -321,7 +321,7 @@ make bootstrap         # start db, install, seed demo+demo2, start api+ui
 
 make agent             # run Margin Watch once, prints proposals with ₹ impact
 make eval              # citation + accuracy suite (needs LLM key)
-pytest -q              # 291 test functions; tests requiring DATABASE_URL or OPENAI_API_KEY skip automatically when those are unset
+pytest -q              # 312 test functions; tests requiring DATABASE_URL or OPENAI_API_KEY skip automatically when those are unset
 ```
 
 For production use, set `API_KEYS_RAW=your-secret-key:demo` in `.env` and pass `X-API-Key: your-secret-key` in API requests. `DEV_MODE=true` disables key enforcement for local development.
@@ -346,7 +346,7 @@ Ports: api `:10001`, ui `:10002`, db `:5434`
 | Scale harness + RLS hardening | 5h | Opus review found 12 bugs; all fixed |
 | Eval suite + second merchant | 2h | Golden questions, scoreboard, RLS isolation test |
 | Model router | 2h | HeuristicRouter, signals, cascade wiring, 21 tests |
-| Adversarial hardening | 4h | 7-round loop; fixed ~20 bugs across validator, catalog, prompt, tools |
+| Adversarial hardening | 4h | 6-round loop; fixed ~20 bugs across validator, catalog, prompt, tools |
 
 ---
 

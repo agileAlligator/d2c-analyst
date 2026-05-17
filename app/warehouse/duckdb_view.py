@@ -27,7 +27,7 @@ def get_duckdb_conn() -> duckdb.DuckDBPyConnection:
     # Disable DuckDB's local filesystem so path-literal replacement scans
     # (SELECT * FROM 'file.csv') cannot read host files.  The Postgres ATTACH
     # extension uses a TCP connection and is unaffected by this setting.
-    conn.execute("SET disabled_filesystems='LocalFileSystem'")
+    conn.execute("SET disabled_filesystems='LocalFileSystem,HTTPFileSystem,S3FileSystem'")
     return conn
 
 
@@ -141,8 +141,16 @@ _FORBIDDEN_TOKENS = {
     "POSTGRES_ATTACH", "MYSQL_ATTACH", "SQLITE_ATTACH",
     # EXPLAIN leaks physical table paths and pg attachment details
     "EXPLAIN",
+    # File-read table functions for extension formats (Arrow, Avro, Iceberg, Delta, Excel)
+    "READ_ARROW", "READ_AVRO", "READ_XLSX", "READ_EXCEL", "ICEBERG_SCAN", "DELTA_SCAN",
+    "READ_ICEBERG",
+    # Parquet metadata introspection functions (expose host filesystem paths)
+    "PARQUET_METADATA", "PARQUET_SCHEMA", "PARQUET_KV_METADATA", "PARQUET_FILE_METADATA",
     # Postgres system catalogs exposed by DuckDB as bare names (no schema prefix needed)
     "PG_CLASS", "PG_DATABASE", "PG_NAMESPACE", "PG_SETTINGS", "PG_TABLES", "PG_VIEWS",
+    # Additional PG catalog bare names usable for enumeration or SSRF
+    "PG_PROC", "PG_ATTRIBUTE", "PG_TYPE", "PG_CONSTRAINT", "PG_INDEX", "PG_INDEXES",
+    "PG_AUTHID", "PG_ROLES", "PG_USER", "PG_SHADOW",
     # SQL control statements (schema-revealing or connection-state-altering)
     "DESCRIBE", "SHOW", "SUMMARIZE",
     "CHECKPOINT", "VACUUM", "ANALYZE",
@@ -164,6 +172,13 @@ def _strip_sql_comments(sql: str) -> str:
 
 def _validate_query(query: str) -> None:
     """Reject anything that isn't a safe SELECT targeting warehouse tables."""
+    # Reject comment markers and carriage returns before any stripping.
+    # _strip_sql_comments is not string-context-aware; a /* inside one literal
+    # and */ inside another can swallow a forbidden token that DuckDB still executes.
+    if any(marker in query for marker in ("--", "/*", "*/", "\r")):
+        raise ValueError(
+            "Query rejected: SQL comments and carriage returns are not permitted."
+        )
     # Strip comments before all checks so that constructs like
     # pg/**/.entities or pg-- x\n.entities cannot bypass pattern matches.
     clean = _strip_sql_comments(query)

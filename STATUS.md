@@ -1,7 +1,7 @@
 # Project Status
 
 **Last updated:** 2026-05-17
-**Phase:** Complete — v0.1.11 (adversarial hardening round 6)
+**Phase:** Complete — v0.1.12 (final stress test + push)
 
 ## What's built
 
@@ -31,7 +31,7 @@
 | Adversarial hardening | ✅ | 7-round loop; 0 Slytherin points in final round |
 | Connector fixture tests | ✅ | Meta Ads + Shiprocket fixture JSON + 16 offline tests |
 | Bench script | ✅ | scripts/bench_ingest.py; 200 rows at ~335 rows/sec; make bench |
-| Seed determinism | ✅ | BASE_DATE=2026-05-13 anchor; re-seeds produce identical analytical output |
+| Seed determinism | ✅ | BASE_DATE=2026-05-17 anchor; re-seeds produce identical analytical output |
 | CI | ✅ | GitHub Actions: lint + pytest (eval skipped when OPENAI_API_KEY=dummy) |
 | README | ✅ | All 9 brief questions answered; real agent run log (1.45x ROAS, ₹4,233/month) |
 
@@ -173,6 +173,22 @@ Multi-round parallel Opus audit → Sonnet fix → Opus review loop. Fixes appli
 - **README connector resource lists** — Shopify list was missing `customers`; Shiprocket "RTO events" was stale (derived, not a connector resource); "SKUs" corrected to "orders" (agent works at order grain); connector file paths corrected in AI-tools table.
 - **wont_fix.md entries #36–39 added** — `_collect_tool_numbers` numeric ID pollution, `get_raw` payload polluting `tool_value_set`, `meta_to_universal` UTC timezone assumption, `margin_watch` overstated adset pause impact.
 - **Test count** — updated to 291 total.
+
+## v0.1.12 final stress test
+
+- **DuckDB sandbox comment-context bypass (CRITICAL)** — `_strip_sql_comments` matched `/*..*/` across string-literal boundaries, allowing a forbidden token between two string literals to be stripped from the validator while DuckDB executed it (SSRF, cross-merchant read). Fix: reject any query containing `--`, `/*`, `*/`, or `\r` before comment-stripping. The chat surface has no legitimate need for SQL comments.
+- **DuckDB HTTPFileSystem/S3 not disabled** — `disabled_filesystems='LocalFileSystem'` did not block `read_csv('https://...')`; extended to `LocalFileSystem,HTTPFileSystem,S3FileSystem`.
+- **DuckDB additional forbidden tokens** — added file-read functions (`READ_ARROW`, `READ_AVRO`, `READ_XLSX`, `READ_EXCEL`, `ICEBERG_SCAN`, `DELTA_SCAN`, `READ_ICEBERG`, parquet metadata functions) and pg catalog bare names (`PG_PROC`, `PG_ATTRIBUTE`, `PG_TYPE`, `PG_CONSTRAINT`, `PG_INDEX`, `PG_INDEXES`, `PG_AUTHID`, `PG_ROLES`, `PG_USER`, `PG_SHADOW`).
+- **Agent failure status reverts to "running"** — `agent_run.status = "failed"` was set before `db.rollback()`, which expired and reverted the attribute. Moved status assignment to after rollback so the commit writes it.
+- **Shopify `total_shipping_price_set: null` crash** — `None.get("shop_money")` raised AttributeError when key existed with null value. Fixed with `or {}`.
+- **Shiprocket `charges: null` crash** — same pattern on `charges` key. Fixed with `or {}`.
+- **Meta Ads non-numeric `value` crash** — `int(float(...))` on unexpected string values. Added `_safe_int`/`_safe_float` helpers that default to 0 on parse failure.
+- **README router accuracy claim unsupported** — "50 hand-labeled queries / 92% correct" had no dataset in repo; removed. Now says "21 unit tests covering all 8 signals."
+- **README latency/cost not hedged** — P50/P95 and $/turn now labeled "(observed during development)" and "(estimated)."
+- **README round count 7 vs 6** — changed to "6-round adversarial loop" to match STATUS.md.
+- **Seed BASE_DATE stale** — bumped from 2026-05-13 to 2026-05-17 in both seed scripts.
+- **.env.example missing DEV_MODE** — added.
+- **Test count** — updated to 312.
 
 ## v0.1.11 adversarial hardening (round 6)
 

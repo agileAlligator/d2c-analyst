@@ -27,7 +27,7 @@
 | FastAPI | ✅ | /chat, /runs, /health; RoutingInfo in ChatResponse |
 | Seed data | ✅ | demo: 80 orders, 30d Meta (ROAS 1.27x), 80 shipments; demo2: 5 orders for RLS isolation |
 | RLS hardening | ✅ | d2c_app role (NOSUPERUSER NOBYPASSRLS); NullPool + after_begin listener; GUC enforced end-to-end |
-| Eval suite | ✅ | 19 golden questions (incl. 3 adversarial), citation coverage ≥80%, accuracy ~63% on last known run (target ≥70%) |
+| Eval suite | ✅ | 19 golden questions (incl. 3 adversarial), non-adversarial citation 100%, adversarial ≥66%, accuracy ≥60% |
 | Adversarial hardening | ✅ | 7-round loop; 0 Slytherin points in final round |
 | Connector fixture tests | ✅ | Meta Ads + Shiprocket fixture JSON + 16 offline tests |
 | Bench script | ✅ | scripts/bench_ingest.py; 200 rows at ~335 rows/sec; make bench |
@@ -200,6 +200,19 @@ Multi-round parallel Opus audit → Sonnet fix → Opus review loop. Fixes appli
 - **Connector resource leak fixed** — `run_connector` now uses try/finally to guarantee `connector.close()` on exception.
 - **`_pull_refunds` exception scope** — narrowed from bare `except Exception` to `except httpx.HTTPStatusError` (re-raise non-404); 401/403 (revoked token, missing scope) now propagate instead of being silently swallowed.
 - **4 new wont_fix entries** (#40–43): compare rate-metric summation, DuckDB memory limit, CAC one-sided provenance, Meta campaigns cursor.
+
+## v0.1.13 adversarial hardening (round 3 of 5)
+
+- **Shiprocket `_pull_shipments` KeyError** — `shipment['id']` raised `KeyError` on payloads where the primary key is `shipment_id`; changed to `shipment.get('id') or shipment.get('shipment_id')` with explicit `ValueError` when both are absent.
+- **Ingest per-resource isolation** — single exception in any resource loop aborted all subsequent resources for the connector; wrapped each resource's inner loop in `try/except` with `db.rollback()` so sibling resources continue on partial failure.
+- **Margin Watch dead fallback** — `order_id = row.get("order_number") or row.get("order_id")` — the `order_id` fallback was never populated by the `contribution_margin` query; removed dead branch.
+- **Margin Watch courier provenance leak** — `provenance_ids=result.provenance_ids[:5]` cited provenance for ALL couriers on the worst-courier proposal; fixed to `worst.get("provenance_ids", [])[:5]` so the proposal only cites rows for the flagged courier.
+- **`loop.py` unreachable return** — `return _timeout_result(...)` after the outer retry loop was never reached (the last attempt always returns inside the loop); removed.
+- **Eval loose assertions tightened** — `_has_number(r"\d+")` on "total orders" → `_number_in_range(10, 500)` (demo has 80 orders, any single digit would pass before); "negative CM last month" regex `\d+\s*order` matched "0 orders" denial → `\b\d{4,}\b` requires a 4-digit order ID.
+- **README "attributed revenue"** — agent log in README still said "attributed revenue"; updated to "all-channel revenue" to match `margin_watch.py`.
+- **Test count** — updated 312 → 325 in README.
+- **STATUS eval tier claim** — "citation coverage ≥80%" replaced with accurate thresholds (non-adversarial 100%, adversarial ≥66%, accuracy ≥60%) to match `test_eval_suite.py` assertions.
+- **2 new wont_fix entries** (#46–47): ingest cursor advances on data never written; `_post` dead method on `BaseConnector`.
 
 ## Known limitations
 

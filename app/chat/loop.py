@@ -207,8 +207,6 @@ def _openai_attempt(question, db, merchant_id, history, model, oai_tools, client
             # Inner loop exhausted MAX_TURNS without producing an answer — don't re-attempt
             return _timeout_result(tool_trace, all_provenance_ids, reason="max_turns_exceeded")
 
-    return _timeout_result(tool_trace, all_provenance_ids)
-
 
 # ── Shared helpers ────────────────────────────────────────────────────────────
 

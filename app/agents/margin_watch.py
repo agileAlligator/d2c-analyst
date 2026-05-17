@@ -23,7 +23,7 @@ class MarginWatchAgent(BaseAgent):
 
         flagged = []
         for row in current.rows:
-            order_id = row.get("order_number") or row.get("order_id")
+            order_id = row.get("order_number")
             # Skip rows with no order number (pure refund entities or unresolved joins)
             if not order_id:
                 continue
@@ -133,7 +133,7 @@ class MarginWatchAgent(BaseAgent):
                     f"({worst_rate:.1%} − {best_rate:.1%}) × "
                     f"₹{settings.rto_unit_cost_inr:.0f}/RTO × {int(total_ships)} shipments."
                 ),
-                provenance_ids=result.provenance_ids[:5],
+                provenance_ids=worst.get("provenance_ids", [])[:5],
                 would_do_api_call={
                     "connector": "shiprocket",
                     "action": "update_courier_preference",

@@ -195,7 +195,7 @@ Real run output (`make agent` on seed data, BASE_DATE=2026-05-17; timestamps abb
 
 ### 2. pause_adset — meta:all_campaigns
 **Expected impact:** ₹4,358
-**Reasoning:** Blended ROAS is 1.27x over the last 14 days (₹14,527 spend, ₹18,484 attributed revenue). Pausing the bottom 30% of campaigns by spend could save ~₹4,358 while preserving higher-ROAS campaigns.
+**Reasoning:** Blended ROAS is 1.27x over the last 14 days (₹14,527 spend, ₹18,484 all-channel revenue). Pausing the bottom 30% of campaigns by spend could save ~₹4,358 while preserving higher-ROAS campaigns.
 **Provenance:** insight:camp_002:2026-05-16, insight:camp_003:2026-05-12, insight:camp_003:2026-05-08, insight:camp_003:2026-05-14, insight:camp_002:2026-05-07
 **Would-do API call:** `{'connector': 'meta_ads', 'note': 'Pause bottom 30% of campaigns by spend — each requires a separate POST /{ad-set-id} with {"status": "PAUSED"}', 'NOT_SENT': True}`
 
@@ -323,7 +323,7 @@ make bootstrap         # start db, install, seed demo+demo2, start api+ui
 
 make agent             # run Margin Watch once, prints proposals with ₹ impact
 make eval              # citation + accuracy suite (needs LLM key)
-pytest -q              # 312 test functions; tests requiring DATABASE_URL or OPENAI_API_KEY skip automatically when those are unset
+pytest -q              # 325 test functions; tests requiring DATABASE_URL or OPENAI_API_KEY skip automatically when those are unset
 ```
 
 For production use, set `API_KEYS_RAW=your-secret-key:demo` in `.env` and pass `X-API-Key: your-secret-key` in API requests. `DEV_MODE=true` disables key enforcement for local development.

@@ -131,7 +131,9 @@ GOLDEN_QUESTIONS: list[GoldenQuestion] = [
         description="Negative CM last month — tests Shopify↔Shiprocket join",
         answer_checks=[
             _mentions_any("negative", "margin"),
-            lambda a: bool(__import__("re").search(r"-\s*₹?\s*\d+|\d+\s*order", a, __import__("re").IGNORECASE)),
+            # Require either a negative rupee amount OR a 4-digit order number (prevents
+            # "0 orders" from satisfying the numeric check on a denial response).
+            lambda a: bool(__import__("re").search(r"-\s*₹?\s*\d+|\b\d{4,}\b", a)),
         ],
     ),
     # ── CAC / ROAS ───────────────────────────────────────────────────────
@@ -183,7 +185,8 @@ GOLDEN_QUESTIONS: list[GoldenQuestion] = [
         question="How many orders do we have in total?",
         description="Entity count — demo has 80 orders, used for isolation check",
         answer_checks=[
-            _has_number(r"\d+"),
+            # demo has 80 orders; require a multi-digit count (not just any digit)
+            _number_in_range(10, 500),
         ],
     ),
     # ── Adversarial — boundary tests (documented failures) ───────────────

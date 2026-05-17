@@ -56,8 +56,15 @@ class ShiprocketConnector(BaseConnector):
                 break
             logger.debug("Shiprocket shipments page %d: %d records", page, len(items))
             for shipment in items:
+                sid = shipment.get("id")
+                if sid is None:
+                    sid = shipment.get("shipment_id")
+                if sid is None:
+                    raise ValueError(
+                        f"Shiprocket shipment missing 'id'/'shipment_id': {list(shipment.keys())}"
+                    )
                 yield RawRecord(
-                    source_record_id=f"shipment:{shipment['id']}",
+                    source_record_id=f"shipment:{sid}",
                     payload=shipment,
                     resource_type="shipment",
                 )

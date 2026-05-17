@@ -289,3 +289,11 @@ The `compare(period_a, period_b)` tool accepts values from `["7d","14d","30d","9
 ## 45. `_pull_refunds` in Shopify connector re-fetches all orders via API
 
 `app/connectors/shopify/connector.py:_pull_refunds()` iterates `_pull_orders(since)` solely to discover order IDs, then calls the Shopify `/orders/{id}/refunds.json` endpoint for each. This means every ingest run that includes "refunds" makes a full second sweep of all recent orders via the Shopify API — doubling the rate-limit cost and wall-clock time. The orders were already fetched moments earlier under the "orders" resource. Fix: read order IDs from `raw_shopify_orders` in the local Postgres DB instead of re-calling Shopify. Scope: connector + runner coordination.
+
+## 46. Ingest cursor advances based on data that was never written
+
+`app/ingest/runner.py` advances `latest_cursor` from `record.payload` timestamps even when the upsert uses `on_conflict_do_update(..., set_={"fetched_at": ..., "run_id": ...})` — meaning the payload was NOT overwritten. If the connector returns a new timestamp for a record that already exists, the cursor advances past it. On the next ingest run, records before the advanced cursor will be skipped even though they were never written. In practice idempotency and preserved payloads limit the blast radius, but the cursor can drift ahead of the actual write frontier. Fix: only advance the cursor when the upsert actually inserted a new row (check `result.rowcount` or use `ON CONFLICT DO UPDATE RETURNING xmax`). Deferred: requires schema/query changes and careful handling of the RETURNING clause across engines.
+
+## 47. `BaseConnector._post` is dead code
+
+`app/connectors/base.py` defines `_post(url, ...)` but no connector ever calls it — Shopify, Meta Ads, and Shiprocket are all read-only during ingestion. The method has correct implementation but adds surface area that could be misused (e.g., accidentally writing to a live API during ingest). Fix: remove unless a write-back connector is added. Deferred: no active caller; safe to leave until a POST-using connector is needed.

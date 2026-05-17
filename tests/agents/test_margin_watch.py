@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from app.agents.margin_watch import MarginWatchAgent
+from app.config import settings
 from app.warehouse.metrics.catalog import MetricResult
 
 
@@ -43,7 +44,8 @@ class TestCourierSwitchProposal:
         p = agent._proposals[0]
         assert p.action_type == "switch_courier"
         assert p.entity_key == "courier:Shadowfax"
-        assert p.expected_inr_impact == pytest.approx(1612.5)
+        expected = 25 * (0.48 - 0.05) * settings.rto_unit_cost_inr
+        assert p.expected_inr_impact == pytest.approx(expected)
         assert p.would_do_api_call["NOT_SENT"] is True
         assert p.would_do_api_call["body"]["preferred_courier"] == "BlueDart"
 
@@ -99,7 +101,8 @@ class TestAdsetPauseProposal:
         assert len(agent._proposals) == 1
         p = agent._proposals[0]
         assert p.action_type == "pause_adset"
-        assert p.expected_inr_impact == pytest.approx(3000.0)
+        expected = 10000.0 * settings.adset_pause_cut_fraction
+        assert p.expected_inr_impact == pytest.approx(expected)
         assert "NOT_SENT" in p.would_do_api_call and p.would_do_api_call["NOT_SENT"] is True
         assert "PAUSED" in p.would_do_api_call["note"]
 

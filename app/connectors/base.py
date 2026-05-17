@@ -1,6 +1,7 @@
 """Connector Protocol and base implementation with retry, rate-limiting, and cursor management."""
 
 import logging
+import re
 import time
 import uuid
 from abc import ABC, abstractmethod
@@ -71,7 +72,8 @@ class BaseConnector(ABC):
         resp = self._http.get(url, **kwargs)
         if resp.status_code == 429:
             retry_after = float(resp.headers.get("Retry-After", 5))
-            logger.warning("429 from %s, sleeping %ss", url, retry_after)
+            safe_url = re.sub(r"access_token=[^&]+", "access_token=***", url)
+            logger.warning("429 from %s, sleeping %ss", safe_url, retry_after)
             time.sleep(retry_after)
             resp.raise_for_status()
         resp.raise_for_status()

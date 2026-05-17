@@ -115,19 +115,19 @@ def _upsert_refund(db: Session, merchant_id: str, raw: RawShopifyRefund):
     if order_entity:
         order_number = order_entity.attributes.get("order_number")
 
-    entity_id = _upsert_entity(
-        db,
-        merchant_id,
-        "refund",
-        natural_key,
-        "shopify",
-        {
-            "shopify_refund_id": refund_id,
-            "shopify_order_id": order_id,
-            "order_number": order_number,
-            "note": p.get("note"),
-        },
-    )
+    refund_attrs = {
+        "shopify_refund_id": refund_id,
+        "shopify_order_id": order_id,
+        "order_number": order_number,
+        "note": p.get("note"),
+    }
+    if order_number is not None:
+        # Full upsert — we have the resolved order_number, so update attributes.
+        entity_id = _upsert_entity(db, merchant_id, "refund", natural_key, "shopify", refund_attrs)
+    else:
+        # order entity not found yet; insert-or-ignore so a previously-resolved
+        # order_number on the existing entity is not overwritten with None.
+        entity_id = _get_or_create_entity(db, merchant_id, "refund", natural_key, "shopify", refund_attrs)
     prov_record(db, merchant_id, "entities", str(entity_id), "raw_shopify_refunds", raw.source_record_id, TRANSFORM_ID)
 
     total_refund = sum(

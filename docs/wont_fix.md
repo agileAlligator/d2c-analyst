@@ -326,6 +326,34 @@ The `compare(period_a, period_b)` tool accepts values from `["7d","14d","30d","9
 
 `app/connectors/shiprocket/connector.py:_pull_shipments` terminates when `len(items) < params["per_page"]` (100). If Shiprocket server-side caps `per_page` at, say, 50, every page returns <100 → connector stops after page 1, silently missing all but the first page. The test `test_pagination_stops_when_partial_page` confirms this is the intended contract (partial page = last page). In practice, Shiprocket honors `per_page=100`. A server-cap scenario would require reading `meta.total_pages` from the response. Deferred: no observed cap; the partial-page termination is the documented pagination contract.
 
-## 56. `make seed` omits `[dev]` extras; `make test` fails on seed-then-test path
+## 55. `make seed` omits `[dev]` extras; `make test` fails on seed-then-test path
 
 `Makefile:seed` runs `pip install -e . -q` without `[dev]`, so pytest and ruff are not installed. A developer who runs `make seed && make test` on a fresh clone (without `make bootstrap`) hits a `command not found: pytest` error. The documented entry point is `make bootstrap` which does install dev extras. Fix: add `[dev]` to the seed target. Deferred: `make seed` is intentionally lightweight; the fix would add ~30s of dev-dep installation to a path that doesn't need them.
+
+## 56. Shopify refunds endpoint has no pagination; orders with >50 refunds lose data
+
+`app/connectors/shopify/connector.py:_pull_refunds` calls `GET /orders/{id}/refunds.json` with no `limit` and no `Link` header pagination loop. Shopify's default page size for sub-resources is 50; any order with more than 50 refunds drops everything past the first page. For standard D2C merchants, >50 refunds on a single order is effectively impossible. Fix: pass `limit=250` and iterate `Link: rel="next"` as `_paginate()` does. Deferred: practical blast radius is zero on D2C order volumes.
+
+## 57. Ingest runner single-transaction per resource; mid-resource failure discards all fetched rows
+
+`app/ingest/runner.py` calls `db.execute(stmt)` per record but only `db.commit()` once per resource (line 110). If the connector raises on page N, the rollback on line 115 discards all 1..N-1 pages already executed in that transaction — the cursor was never advanced so the next run re-fetches them (idempotent), but a large initial ingest must restart from zero. Fix: commit per-page or per-K records and advance cursor incrementally. Deferred: only affects initial ingests with large data volumes; re-run is safe.
+
+## 58. Cursor string comparison mis-orders non-UTC ISO-8601 offsets
+
+`app/ingest/runner.py:102-108` uses `>` to compare ISO-8601 strings. `'-'` (0x2D) > `'+'` (0x2B) in ASCII, so `"T00:00:00-05:00" > "T00:00:00+00:00"` even though Eastern Standard is later in UTC. A Shopify store returning local-timezone `updated_at` with a negative offset (US Eastern, etc.) advances the cursor past the actual latest UTC timestamp, causing subsequent runs to miss records in the gap. Fix: parse with `datetime.fromisoformat` and compare aware datetimes; persist as UTC ISO. Deferred: Shopify normalizes `updated_at` to UTC-offset format (`+00:00`) in practice; Eastern-time stores have not been observed.
+
+## 59. `channel_order_id=""` (empty string) defeats IS NOT NULL identity guard
+
+`app/normalize/shiprocket_to_universal.py:33` writes `channel_order_id = str(p.get("channel_order_id") or p.get("order_id", ""))`. When both keys are absent, `channel_order_id` is stored as `""` (empty string) rather than NULL. The identity join in `app/normalize/identity.py:34` filters `IS NOT NULL`, which passes empty strings, causing them to be scanned against the full orders table (no match, no spurious link). Fix: store NULL when both keys are absent; check `IS NOT NULL AND <> ''`. Deferred: no false links are created; performance impact is negligible at D2C volumes.
+
+## 60. `links`/`events` foreign keys are not composite with `merchant_id`
+
+`app/warehouse/models.py:154-161` — `ForeignKey("entities.entity_id")` on `links.from_entity`, `links.to_entity`, and `events.entity_id` is a single-column FK. A schema-level cross-merchant link (one merchant's event referencing another's entity) is not prevented. With RLS and normalizer-side merchant scoping, this cannot be triggered through normal code paths. Fix: composite FK `(merchant_id, entity_id)` with a matching composite unique on entities. Deferred: requires schema migration; defense-in-depth gap only.
+
+## 61. `test_ingest_idempotent.py` does not exercise `runner.run_connector`
+
+`tests/test_ingest_idempotent.py` builds its own `pg_insert(...).on_conflict_do_update(set_={"fetched_at": ..., "run_id": ...})` statements directly. A regression that changes the runner's `set_` clause to also overwrite `payload` would not be caught by this test. Fix: call `run_connector` with a mocked connector instead. Deferred: the current test structure verifies the upsert contract at the SQL level; the runner's delegate is the unit under test for `test_runner_*.py`.
+
+## 62. `eval test_revenue_differs_between_merchants` is non-deterministic
+
+`tests/eval/test_eval_suite.py:199-214` asserts `r_demo["answer"] != r_demo2["answer"]`. LLM prose generation is non-deterministic; two calls on the same data routinely produce different surface strings. Even if RLS were broken and both merchants saw the same data, the answers would still differ most of the time. The follow-up `test_demo2_has_lower_revenue` is the real RLS check. Fix: compare extracted numeric values rather than raw answer strings. Deferred: the follow-up test is the authoritative one; this test is effectively a smoke test for "both calls returned something".

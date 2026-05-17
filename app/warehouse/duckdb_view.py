@@ -2,6 +2,7 @@
 
 import logging
 import re
+from urllib.parse import quote_plus
 
 import duckdb
 
@@ -20,8 +21,13 @@ def get_duckdb_conn() -> duckdb.DuckDBPyConnection:
     conn = duckdb.connect(database=":memory:")
     conn.execute("INSTALL postgres; LOAD postgres;")
     p = _parse_url()
-    attach_str = f"dbname={p['db']} host={p['host']} port={p['port']} user={p['user']} password={p['pw']}"
-    conn.execute(f"ATTACH '{attach_str}' AS pg (TYPE POSTGRES, READ_ONLY)")
+    # Use URI form so special characters in credentials are URL-encoded rather than
+    # requiring libpq keyword-value quoting rules inside DuckDB's string literal.
+    attach_uri = (
+        f"postgresql://{quote_plus(p['user'])}:{quote_plus(p['pw'])}"
+        f"@{p['host']}:{p['port']}/{p['db']}"
+    )
+    conn.execute(f"ATTACH '{attach_uri}' AS pg (TYPE POSTGRES, READ_ONLY)")
     # Disable DuckDB's local filesystem so path-literal replacement scans
     # (SELECT * FROM 'file.csv') cannot read host files.  The Postgres ATTACH
     # extension uses a TCP connection and is unaffected by this setting.

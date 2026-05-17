@@ -115,14 +115,17 @@ def get_run(
     merchant_id: str = Depends(get_merchant_id),
 ):
     set_merchant(db, merchant_id)
-    run = (
-        db.query(AgentRun)
-        .filter(
-            AgentRun.id == run_id,
-            AgentRun.merchant_id == merchant_id,
+    try:
+        run = (
+            db.query(AgentRun)
+            .filter(
+                AgentRun.id == run_id,
+                AgentRun.merchant_id == merchant_id,
+            )
+            .first()
         )
-        .first()
-    )
+    except Exception:
+        raise HTTPException(422, "Invalid run_id format")
     if not run:
         raise HTTPException(404, "Run not found")
     return {

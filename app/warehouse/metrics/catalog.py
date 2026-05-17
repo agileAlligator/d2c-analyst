@@ -373,6 +373,10 @@ def query_metric(
     template = METRIC_SQL[metric_name]
 
     # rto_rate now filters on rto event occurred_at, so it uses TIME_FILTERS like other metrics.
+    if time_range is not None and time_range not in TIME_FILTERS:
+        raise ValueError(
+            f"Unknown time_range: {time_range!r}. Valid values: {list(TIME_FILTERS)} or None (all-time)."
+        )
     time_filter = f"AND {TIME_FILTERS[time_range]}" if time_range in TIME_FILTERS else ""
 
     if group_by and group_by in GROUP_BY_EXPRESSIONS:

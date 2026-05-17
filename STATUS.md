@@ -1,7 +1,7 @@
 # Project Status
 
 **Last updated:** 2026-05-17
-**Phase:** Complete — v0.1.14 (adversarial hardening rounds 3–4 of 5)
+**Phase:** Complete — v0.1.14 (adversarial hardening rounds 3–5 of 5)
 
 ## What's built
 
@@ -229,6 +229,17 @@ Multi-round parallel Opus audit → Sonnet fix → Opus review loop. Fixes appli
 - **`golden_questions.py` total-orders semantic check** — added `_mentions_any("order", "total")` alongside the number range so answers about unrelated numbers (e.g. revenue) can't satisfy the assertion.
 - **pyproject.toml version** — bumped 0.1.12 → 0.1.13.
 - **7 new wont_fix entries** (#48–54): `compare()` non-additive sums, normalizer per-row savepoints, naive DateTime columns, Retry-After HTTP-date form, rto_rate over-broad provenance, margin_watch organic ROAS conflation, `make seed` dev-dep gap.
+
+## v0.1.14 adversarial hardening (round 5 of 5)
+
+- **Refund `order_number` overwrite to NULL** — `_upsert_refund` called `_upsert_entity` (which updates attributes on conflict) even when `order_number` was None; a re-normalize before the parent order was ingested would stomp a previously-resolved order_number back to NULL, silently excluding that refund from contribution_margin (revenue overstated). Fixed: when `order_number` is None, use `_get_or_create_entity` (insert-or-ignore semantics) so existing resolved values are preserved.
+- **`query_metric` ignores unknown `time_range`** — an unrecognised `time_range` (e.g. `"60d"`, `None` passed explicitly) fell through to no time filter, returning all-time data labelled with the user's requested window. Now raises `ValueError` immediately for unknown values; `None` still produces all-time behavior as documented.
+- **DuckDB ATTACH password not URL-encoded** — Postgres password was interpolated directly into the libpq keyword-value string inside a DuckDB SQL string literal; a password containing `'` would produce broken SQL. Changed to URI form with `urllib.parse.quote_plus` so special characters are encoded.
+- **Meta access_token leaked in 429 log line** — Meta's paginated `next` URL embeds `access_token=...` in the query string; `logger.warning("429 from %s", url)` in `base.py` logged the full URL. Scrubbed with `re.sub(r"access_token=[^&]+", "access_token=***", url)` before logging.
+- **`_BARE_CITE_TAG_RE` case-sensitive** — mixed-case `<Cite ...>` / `</Cite>` output from the model survived the bare-tag scrub, producing visible markup in user responses. Added `re.IGNORECASE`.
+- **`/runs/{run_id}` returns 500 on non-UUID input** — Postgres raises `InvalidTextRepresentation` for a non-UUID string passed to a UUID column; the endpoint had no try/except. Wrapped the DB query in try/except; returns HTTP 422 on invalid format.
+- **`test_margin_watch.py` hardcoded ₹ expected values** — `pytest.approx(1612.5)` and `pytest.approx(3000.0)` were computed manually from `settings.rto_unit_cost_inr` and `settings.adset_pause_cut_fraction`; a settings change would silently break the assertion in the opposite direction (pass when wrong). Now derived from `settings.*` at test time.
+- **8 new wont_fix entries** (#55–62): make seed dev-dep gap, Shopify refunds unpaginated, ingest single-transaction-per-resource, cursor string comparison, channel_order_id empty string, links/events FK not composite, test_ingest_idempotent bypasses runner, eval RLS string comparison.
 
 ## Known limitations
 

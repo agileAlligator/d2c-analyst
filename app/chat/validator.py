@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 CITE_RE = re.compile(r'<cite ref="([^"]+)">([^<]*)</cite>')
 
 # Strips any remaining bare <cite...> or </cite> tags (e.g. malformed GPT output)
-_BARE_CITE_TAG_RE = re.compile(r"</?cite[^>]*>")
+_BARE_CITE_TAG_RE = re.compile(r"</?cite[^>]*>", re.IGNORECASE)
 
 # Time-period references that should never require a citation.
 _timeref_re = re.compile(

@@ -90,5 +90,7 @@ def test_unknown_resource_raises(httpx_mock):
 
 def test_orders_resource_removed(httpx_mock):
     """'orders' was removed from RESOURCES — pull() must reject it."""
+    from app.connectors.shiprocket.connector import RESOURCES
+    assert "orders" not in RESOURCES
     with pytest.raises(ValueError, match="Unknown Shiprocket resource"):
         list(_make_connector().pull("orders"))

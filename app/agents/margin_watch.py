@@ -31,7 +31,7 @@ class MarginWatchAgent(BaseAgent):
             if revenue < 0:
                 continue
             margin = Decimal(str(row.get("contribution_margin") or 0))
-            prov_ids = row.get("provenance_ids") or current.provenance_ids
+            prov_ids = row.get("provenance_ids") or []
 
             if margin < MARGIN_FLOOR:
                 flagged.append({

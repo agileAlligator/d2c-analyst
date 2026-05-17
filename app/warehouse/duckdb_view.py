@@ -136,6 +136,13 @@ _FORBIDDEN_TOKENS = {
     "DUCKDB_CONSTRAINTS", "DUCKDB_INDEXES", "DUCKDB_KEYWORDS",
     "DUCKDB_TEMPORARY_FILES",
     "PRAGMA_DATABASE_LIST", "PRAGMA_TABLE_INFO", "PRAGMA_SHOW",
+    # DuckDB Postgres/MySQL/SQLite ATTACH variants — open a new connection, bypassing
+    # merchant-scoped views (SSRF / credential-exfil bypass)
+    "POSTGRES_ATTACH", "MYSQL_ATTACH", "SQLITE_ATTACH",
+    # EXPLAIN leaks physical table paths and pg attachment details
+    "EXPLAIN",
+    # Postgres system catalogs exposed by DuckDB as bare names (no schema prefix needed)
+    "PG_CLASS", "PG_DATABASE", "PG_NAMESPACE", "PG_SETTINGS", "PG_TABLES", "PG_VIEWS",
     # SQL control statements (schema-revealing or connection-state-altering)
     "DESCRIBE", "SHOW", "SUMMARIZE",
     "CHECKPOINT", "VACUUM", "ANALYZE",

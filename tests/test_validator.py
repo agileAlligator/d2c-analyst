@@ -341,16 +341,29 @@ def test_zero_citation_without_zero_in_tool_fails(mock_db):
 
 
 def test_multi_number_cite_all_numbers_checked(mock_db):
-    """When cite value has multiple numbers, at least one must match tool_value_set"""
-    # Only 99999 is in tool results, not 31814 — must still pass (any match)
+    """ALL numbers in a cited value must appear in tool_value_set.
+
+    If 31814 is fabricated (only 99999 is in tool results) the cite must be
+    flagged — the old any() short-circuit that let this slip through is the
+    bug being tested here.
+    """
     text = '<cite ref="prov:123">₹31,814 (was ₹99,999)</cite>'
     with patch("app.chat.validator._try_resolve", return_value=True):
         cleaned, valid, issues = validate_and_clean(
             text, ["prov:123"], mock_db, merchant_id="demo", tool_value_set={99999.0}
         )
-    assert valid is True
-    assert "31" in cleaned or "814" in cleaned
-    assert len([i for i in issues if "not found in tool results" in i]) == 0
+    # 31814 is not in tool_value_set — the cite must be rejected
+    assert valid is False
+    assert any("not found in tool results" in i for i in issues)
+
+    # Conversely, when BOTH numbers are in the tool set the cite must pass.
+    with patch("app.chat.validator._try_resolve", return_value=True):
+        cleaned2, valid2, issues2 = validate_and_clean(
+            text, ["prov:123"], mock_db, merchant_id="demo",
+            tool_value_set={31814.0, 99999.0}
+        )
+    assert valid2 is True
+    assert len([i for i in issues2 if "not found in tool results" in i]) == 0
 
 
 def test_lowercase_preceding_word_still_strips_year(mock_db):

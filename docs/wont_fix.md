@@ -233,3 +233,35 @@ If a code path forgets to call `set_merchant()` before a query, `current_setting
 ## 35. Single-digit numbers (0-9) bypass the bare-number scan
 
 `bare_number_re` in `validate_and_clean` requires `\d{2,}` for plain integers, `\d{1,3}(?:,\d{3})+` for comma-formatted numbers, or `\d+\.\d+` for decimals. Single-digit integers (1-9, including 0) are not matched by any alternative. A model response saying "3 orders had negative margin" without citing the "3" passes validation. Low practical impact: single-digit counts are rarely the sole analytical claim in an answer, and the system prompt instructs the model to use the `query_metric` tool for counts. Fix: change the second alternative to `\b\d+(?:\.\d+)?\b` with a single-digit exemption for time-period references (existing `_timeref_re` handles "7d", "30 days", etc.). Scope: validator regex + regression test.
+
+## 36. loop.py _collect_tool_numbers adds numeric string IDs to value set
+
+**What**: `_collect_tool_numbers` recurses all tool result values and tries `float()` on strings. Pure-digit record IDs (order IDs, customer IDs), year numbers (2026), area codes etc. all become "legitimate" cited values, weakening the validator's value-set guard.
+
+**Why deferred**: Proper fix requires field-level whitelisting of numeric fields per tool/resource type — significant schema coupling. Current validator still catches hallucinated domain-specific values (₹ amounts, percentages) that don't appear anywhere in tool results.
+
+**Production fix**: maintain an explicit `NUMERIC_FIELDS` allowlist per tool schema; only add values from those fields to the value set.
+
+## 37. get_raw results pollute tool_value_set
+
+**What**: When the model calls `get_raw`, the entire raw payload JSON is scanned for floatable values. Raw payloads contain customer IDs, phone numbers, zip codes, line-item subtotals — all of which become "legitimate" validator values. One `get_raw` call significantly weakens the value-set check.
+
+**Why deferred**: Same root cause as above; field-level whitelisting needed. Severity is bounded because the validator still strips *uncited* bare numbers.
+
+**Production fix**: exclude get_raw results from `_collect_tool_numbers`; let the provenance round-trip serve as the citation signal for raw payloads.
+
+## 38. meta_to_universal timezone assumption
+
+**What**: `occurred_at` for Meta insights is synthesised as `date_start + "+00:00"` (UTC), but Meta buckets days in the ad account's configured timezone. For IST accounts, a "2024-01-15" bucket is actually 2024-01-14T18:30Z, shifting ad_spend events 5.5h vs. correlated order_revenue events.
+
+**Why deferred**: Meta's Insights API does not return the account timezone in the payload itself; fetching it requires a separate `/act_<id>?fields=timezone_name` call and would require storing per-merchant TZ config.
+
+**Production fix**: store `timezone_name` during connector auth; apply tzdata offset when synthesising occurred_at.
+
+## 39. margin_watch adset pause expected_inr_impact overstated
+
+**What**: `expected_inr_impact = total_spend * pause_fraction` treats the full spend as pure savings. Real net impact = `spend_reduction − revenue_lost` ≈ `total_spend * pause_fraction * (1 − blended_roas)`. At ROAS > 1, computed "savings" are actually negative.
+
+**Why deferred**: Proposal is labelled as `would_do_api_call` (simulated, not executed); the calculation is directionally correct (low-ROAS campaign → reduce spend) even if the ₹ estimate is wrong.
+
+**Production fix**: compute `net_impact = spend_cut * (1 - blended_roas)`; add both gross and net lines to the proposal note.

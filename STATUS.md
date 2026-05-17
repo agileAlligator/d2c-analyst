@@ -1,7 +1,7 @@
 # Project Status
 
 **Last updated:** 2026-05-17
-**Phase:** Complete — v0.1.9 (adversarial hardening round 4)
+**Phase:** Complete — v0.1.10 (adversarial hardening round 5)
 
 ## What's built
 
@@ -112,7 +112,7 @@ A second round of hardening run via the `/harden` slash command (`.claude/comman
 - **validator duplicate-ref dedup** — `seen_refs: set` prevents repeated `_try_resolve` DB calls and duplicate issues when the same cite ref appears multiple times in a response.
 - **Stale tests fixed** — `test_record_id_insight` updated to include required `campaign_id`; `test_negative_margin_emits_raise_price` updated to assert `entity_key == "order:..."` (variant-level branch removed).
 - **`wont_fix.md` #17 and #18 corrected** — #17 reworded to accurately scope the table-ownership concern to the no-`.env` case; #18 corrected to note `d2c_app` IS created in CI but tests still connect as superuser.
-- **README/STATUS test count** — corrected to 186 total; 52 DB-gated, 21 eval-gated, 113 fully offline (double-count fixed).
+- **README/STATUS test count** — corrected to 291 total; 52 DB-gated, 21 eval-gated, offline remainder (double-count fixed).
 
 ## v0.1.7 wont_fix audit (entries 21–27)
 
@@ -160,7 +160,19 @@ Multi-round parallel Opus audit → Sonnet fix → Opus review loop. Fixes appli
 - **Eval RLS timeout mis-attribution** — tests failed with "RLS isolation broken" on LLM timeouts; added `pytest.skip` guard when answers contain no numbers.
 - **Margin Watch reasoning string** — parentheses missing in `(worst_rate − best_rate) × cost × shipments` display; `total_ships` multiplier also absent; fixed.
 - **`_get_raw` missing customers table** — `raw_shopify_customers` absent from chat tools lookup list; added.
-- **`wont_fix.md` entries #30–34 added** — Meta first-match attribution window, validator any-vs-all tradeoff, revenue refund-date bucketing, `set_merchant` silent zero rows, `filters` param silently ignored.
+- **`wont_fix.md` entries #30–35 added** — Meta first-match attribution window, validator any-vs-all tradeoff, revenue refund-date bucketing, `set_merchant` silent zero rows, `filters` param silently ignored, single-digit numbers bypass bare-number scan.
+
+## v0.1.10 adversarial hardening (round 5)
+
+- **Citation any→all fix** — `validate_and_clean` used `any()` when checking multi-number cite values; a fabricated number in `<cite>₹31,814 (was ₹99,999 forecast)</cite>` would pass if 31,814 resolved. Changed outer quantifier to `all()` so every number inside a cite must appear in `tool_value_set`.
+- **DuckDB `postgres_attach`/`mysql_attach`/`sqlite_attach` SSRF** — these functions open a new TCP connection, bypassing `disabled_filesystems`; added to `_FORBIDDEN_TOKENS`.
+- **DuckDB `EXPLAIN` leaks physical paths** — `EXPLAIN SELECT * FROM entities` reveals pg attachment path and table names; added to `_FORBIDDEN_TOKENS`.
+- **DuckDB bare `pg_class`/`pg_tables`/`pg_settings`/`pg_database`/`pg_namespace`/`pg_views`** — DuckDB exposes pg catalog views under bare names; added to `_FORBIDDEN_TOKENS`.
+- **Margin Watch per-order provenance leak** — `prov_ids = row.get("provenance_ids") or current.provenance_ids` fell back to the full result set's provenance when a row had `[]`; fixed to `or []` so a proposal never cites unrelated rows.
+- **Shiprocket "unknown" shipment ID data corruption** — missing `id`/`shipment_id` collapsed to `natural_key="shiprocket:shipment:unknown"`, causing upsert overwrites; now raises `ValueError`.
+- **README connector resource lists** — Shopify list was missing `customers`; Shiprocket "RTO events" was stale (derived, not a connector resource); "SKUs" corrected to "orders" (agent works at order grain); connector file paths corrected in AI-tools table.
+- **wont_fix.md entries #36–39 added** — `_collect_tool_numbers` numeric ID pollution, `get_raw` payload polluting `tool_value_set`, `meta_to_universal` UTC timezone assumption, `margin_watch` overstated adset pause impact.
+- **Test count** — updated to 291 total.
 
 ## Known limitations
 

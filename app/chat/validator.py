@@ -172,7 +172,7 @@ def validate_and_clean(
                 # At least one number in the cite value must match a tool result.
                 # Checking all numbers catches cases like <cite ref="id">₹31,814 (was ₹99,999)</cite>
                 # where only the first number was previously verified.
-                value_ok = any(
+                value_ok = all(
                     any(
                         abs(num - v) <= max(0.01, abs(num) * 0.01)
                         or (v < 0 < num and abs(abs(num) - abs(v)) <= max(0.01, abs(num) * 0.01))

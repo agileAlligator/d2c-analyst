@@ -2,13 +2,13 @@
 
 AI analyst + autonomous Margin Watch agent for D2C brands. Chat with your data. Get cited answers. Watch your margins.
 
-On the seed merchant (80 orders, 30-day window), Margin Watch surfaces **~₹4,233/month** in actionable savings: ₹573 from a courier switch (Shadowfax→BlueDart, computed as 23 shipments × (47.8% − 31.2%) × ₹150/RTO), ₹3,608 from pausing underperforming campaigns (ROAS 1.45x, below the 2.0x threshold), and ₹52 from repricing two negative-margin SKUs.
+On the seed merchant (80 orders, 30-day window), Margin Watch surfaces **~₹4,233/month** in actionable savings: ₹573 from a courier switch (Shadowfax→BlueDart, computed as 23 shipments × (47.8% − 31.2%) × ₹150/RTO), ₹3,608 from pausing underperforming campaigns (ROAS 1.45x, below the 2.0x threshold), and ₹52 from repricing two negative-margin orders.
 
 ---
 
 ## 1. What I built
 
-**Connectors** pull from Shopify (orders, refunds, products), Meta Ads (campaigns, insights), and Shiprocket (shipments, RTO events) into immutable `raw_*` tables in Postgres — payloads stored as JSONB with a `source_record_id` that never changes. A **normalizer** transforms those raw rows into a universal `entities + events + links` model with a first-class `provenance` table that maps every derived row back to the raw rows that produced it. A **chat agent** (OpenAI tool-use loop; `gpt-4o-mini` by default, escalated to `gpt-4o` via a heuristic router on complexity signals or citation-validation failure) answers questions over typed metrics and sandboxed SQL; every number in the response is server-side-validated against provenance before the user sees it — uncited numbers are stripped or flagged, not passed through. An on-demand **Margin Watch agent** scans the warehouse, surfaces the top ₹-saving actions (courier switch, ad pause, price raise), and writes a run log with every claim cited back to a source row. It never calls a source API. The whole thing is keyed by `merchant_id` end-to-end — every table, every RLS policy, every tool call — so the path from 1 to 10 000 merchants is row-level isolation + worker sharding, not a rewrite.
+**Connectors** pull from Shopify (orders, refunds, products, customers), Meta Ads (campaigns, insights), and Shiprocket (shipments) into immutable `raw_*` tables in Postgres — payloads stored as JSONB with a `source_record_id` that never changes. A **normalizer** transforms those raw rows into a universal `entities + events + links` model with a first-class `provenance` table that maps every derived row back to the raw rows that produced it. A **chat agent** (OpenAI tool-use loop; `gpt-4o-mini` by default, escalated to `gpt-4o` via a heuristic router on complexity signals or citation-validation failure) answers questions over typed metrics and sandboxed SQL; every number in the response is server-side-validated against provenance before the user sees it — uncited numbers are stripped or flagged, not passed through. An on-demand **Margin Watch agent** scans the warehouse, surfaces the top ₹-saving actions (courier switch, ad pause, price raise), and writes a run log with every claim cited back to a source row. It never calls a source API. The whole thing is keyed by `merchant_id` end-to-end — every table, every RLS policy, every tool call — so the path from 1 to 10 000 merchants is row-level isolation + worker sharding, not a rewrite.
 
 ```
                  ┌─────────────────────────────────────────┐
@@ -321,7 +321,7 @@ make bootstrap         # start db, install, seed demo+demo2, start api+ui
 
 make agent             # run Margin Watch once, prints proposals with ₹ impact
 make eval              # citation + accuracy suite (needs LLM key)
-pytest -q              # 186 test functions; tests requiring DATABASE_URL or OPENAI_API_KEY skip automatically when those are unset
+pytest -q              # 291 test functions; tests requiring DATABASE_URL or OPENAI_API_KEY skip automatically when those are unset
 ```
 
 For production use, set `API_KEYS_RAW=your-secret-key:demo` in `.env` and pass `X-API-Key: your-secret-key` in API requests. `DEV_MODE=true` disables key enforcement for local development.
@@ -369,9 +369,9 @@ Honest per-file breakdown:
 | File / module | Human | LLM |
 |---|---|---|
 | `app/connectors/base.py` | Interface contract (rate limit, retry, cursor, upsert) | Implementation; I caught a bug where 401 was being retried instead of surfaced |
-| `app/connectors/shopify.py` | Specified resources to pull and pagination strategy | Generated; human reviewed pagination cursor handling |
-| `app/connectors/meta_ads.py` | Specified insight granularity (daily, not lifetime) | Generated from Meta API docs |
-| `app/connectors/shiprocket.py` | Specified Bearer token auth pattern | Generated; auth from `.env` not OAuth was my decision |
+| `app/connectors/shopify/connector.py` | Specified resources to pull and pagination strategy | Generated; human reviewed pagination cursor handling |
+| `app/connectors/meta_ads/connector.py` | Specified insight granularity (daily, not lifetime) | Generated from Meta API docs |
+| `app/connectors/shiprocket/connector.py` | Specified Bearer token auth pattern | Generated; auth from `.env` not OAuth was my decision |
 | `app/warehouse/models.py` | Designed 4-table universal model + provenance contract | Generated SQLAlchemy models |
 | `app/normalize/` | Specified event types, MD5 idempotency contract, join logic | Generated normalizers; I caught wrong join field (shopify_order_id vs order_number) |
 | `app/warehouse/metrics/catalog.py` | Specified metrics and their semantics | Generated SQL templates; I fixed 3 bugs (GROUP BY 1=1, ARRAY_AGG NULLs, contribution margin join) |

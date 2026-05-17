@@ -26,7 +26,9 @@ def normalize_shipments(db: Session, merchant_id: str) -> int:
 
 def _upsert_shipment(db: Session, merchant_id: str, raw: RawShiprocketShipment):
     p = raw.payload
-    shipment_id = str(p.get("id") or p.get("shipment_id", "unknown"))
+    shipment_id = str(p.get("id") or p.get("shipment_id") or "")
+    if not shipment_id:
+        raise ValueError(f"Shiprocket shipment payload missing 'id' and 'shipment_id': {p}")
     channel_order_id = str(p.get("channel_order_id") or p.get("order_id", ""))
     awb = str(p.get("awb") or p.get("awb_code", ""))
     status = str(p.get("status") or p.get("shipment_status", ""))

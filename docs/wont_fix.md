@@ -229,3 +229,7 @@ If a code path forgets to call `set_merchant()` before a query, `current_setting
 ## 34. `query_metric` `filters` parameter is silently ignored
 
 `app/warehouse/metrics/catalog.py` accepts a `filters: dict | None = None` parameter in the function signature, but the parameter is never substituted into the SQL (`extra_filters` is always `""`). Callers passing filters expecting them to apply get unfiltered results with no error or warning. Fix: implement the filter substitution, or remove the parameter. Scope: catalog SQL update.
+
+## 35. Single-digit numbers (0-9) bypass the bare-number scan
+
+`bare_number_re` in `validate_and_clean` requires `\d{2,}` for plain integers, `\d{1,3}(?:,\d{3})+` for comma-formatted numbers, or `\d+\.\d+` for decimals. Single-digit integers (1-9, including 0) are not matched by any alternative. A model response saying "3 orders had negative margin" without citing the "3" passes validation. Low practical impact: single-digit counts are rarely the sole analytical claim in an answer, and the system prompt instructs the model to use the `query_metric` tool for counts. Fix: change the second alternative to `\b\d+(?:\.\d+)?\b` with a single-digit exemption for time-period references (existing `_timeref_re` handles "7d", "30 days", etc.). Scope: validator regex + regression test.

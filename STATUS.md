@@ -10,7 +10,7 @@
 | Repo skeleton | ✅ | pyproject, Docker Compose, Makefile, CI |
 | Shopify connector | ✅ | orders, products, refunds, customers — cursor + retry |
 | Meta Ads connector | ✅ | campaigns, insights (daily) |
-| Shiprocket connector | ✅ | orders, shipments — Bearer token from .env |
+| Shiprocket connector | ✅ | shipments — Bearer token from .env |
 | Ingestion runner | ✅ | idempotent upsert, cursor tracking, set_merchant per job |
 | Universal schema | ✅ | entities, events, links, provenance + RLS |
 | Shopify normalizer | ✅ | orders → order_revenue events; MD5 event IDs for idempotency |

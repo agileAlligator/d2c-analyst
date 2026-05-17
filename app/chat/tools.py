@@ -6,7 +6,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.provenance.record import get_raw_payload
+from app.provenance.record import _ALLOWED_RAW_TABLES, get_raw_payload
 from app.warehouse.db import set_merchant
 from app.warehouse.duckdb_view import sandboxed_sql
 from app.warehouse.metrics.catalog import query_metric
@@ -198,20 +198,13 @@ def _sql(db: Session, merchant_id: str, query: str) -> dict:
     return {"rows": rows, "provenance_ids": prov_ids, "row_count": len(rows)}
 
 
-_RAW_TABLES = [
-    "raw_shopify_orders", "raw_shopify_products", "raw_shopify_refunds",
-    "raw_shopify_customers", "raw_meta_insights", "raw_meta_campaigns",
-    "raw_shiprocket_shipments",
-]
-
-
 def _get_raw(db: Session, merchant_id: str, provenance_id: str) -> dict:
     """Resolve a provenance_id to its source payload by scanning all raw tables."""
     parts = provenance_id.split(":", 1)
     table_hint = parts[0] if len(parts) > 1 else ""
 
     # Try tables with matching hint first
-    ordered = sorted(_RAW_TABLES, key=lambda t: (0 if table_hint in t else 1))
+    ordered = sorted(_ALLOWED_RAW_TABLES, key=lambda t: (0 if table_hint in t else 1))
     for table in ordered:
         payload = get_raw_payload(db, table, provenance_id, merchant_id)
         if payload is not None:

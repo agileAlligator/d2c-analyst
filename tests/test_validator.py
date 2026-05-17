@@ -324,6 +324,8 @@ def test_zero_citation_with_zero_in_tool_value_set_passes(mock_db):
         cleaned, valid, issues = validate_and_clean(
             text, ["prov:123"], mock_db, merchant_id="demo", tool_value_set={0.0}
         )
+    assert valid is True
+    assert "0" in cleaned
     assert "*(unverified)*" not in cleaned
     assert len([i for i in issues if "not found in tool results" in i]) == 0
 
@@ -346,6 +348,8 @@ def test_multi_number_cite_all_numbers_checked(mock_db):
         cleaned, valid, issues = validate_and_clean(
             text, ["prov:123"], mock_db, merchant_id="demo", tool_value_set={99999.0}
         )
+    assert valid is True
+    assert "31" in cleaned or "814" in cleaned
     assert len([i for i in issues if "not found in tool results" in i]) == 0
 
 

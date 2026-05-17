@@ -71,6 +71,15 @@ _ADJACENT_YEAR_RANGE = re.compile(r"^\s*[-–—]\s*\d{4}\b|\b\d{4}\s*[-–—]\
 # "The 2024", "Last 2023") are NOT exempted — those have only one capital word.
 _PROPER_NOUN_BEFORE = re.compile(r"[A-Z][a-zA-Z]+\s+[A-Z][a-zA-Z]+[\s,\-]*$")
 
+# Module-level export so the eval suite and other callers can reuse this
+# regex without duplicating it.  Matches numbers that require a citation:
+# comma-formatted integers, plain integers ≥ 2 digits, and decimals.
+bare_number_re = re.compile(
+    r'\b\d{1,3}(?:,\d{3})+(?:\.\d+)?\b'  # comma-formatted: 30,412
+    r'|\b\d{2,}(?:\.\d+)?\b'              # plain integers ≥ 2 digits
+    r'|\b\d+\.\d+\b'                       # decimals
+)
+
 
 def _is_yearlike(n: str, ctx_before: str = "", ctx_after: str = "") -> bool:
     try:
@@ -183,11 +192,6 @@ def validate_and_clean(
     # will be caught and stripped by the scan below. Bare tags are cleaned at the end.
 
     # Build exclusion spans: valid cite tags + time-period references (e.g. "30 days", "14d")
-    bare_number_re = re.compile(
-        r'\b\d{1,3}(?:,\d{3})+(?:\.\d+)?\b'  # comma-formatted: 30,412 / 1,23,456
-        r'|\b\d{2,}(?:\.\d+)?\b'              # plain integers ≥ 2 digits
-        r'|\b\d+\.\d+\b'                       # decimals
-    )
     excluded_spans = (
         [(m.start(), m.end()) for m in CITE_RE.finditer(cleaned)]
         + [(m.start(), m.end()) for m in _timeref_re.finditer(cleaned)]

@@ -52,8 +52,8 @@ def normalize_insights(db: Session, merchant_id: str) -> int:
 def _upsert_insight(db: Session, merchant_id: str, raw: RawMetaInsight):
     p = raw.payload
     campaign_id = str(p.get("campaign_id", "unknown"))
-    adset_id = str(p.get("adset_id", ""))
-    ad_id = str(p.get("ad_id", ""))
+    adset_id = str(p.get("adset_id") or "")
+    ad_id = str(p.get("ad_id") or "")
     date = p.get("date_start", "")
 
     # Use the finest grain available so multiple ads in the same campaign/day

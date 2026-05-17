@@ -83,31 +83,12 @@ def test_retry_on_429(httpx_mock):
     assert len(httpx_mock.get_requests()) == 2
 
 
-# ---- orders resource ---------------------------------------------------------
-
-def test_orders_parse(httpx_mock):
-    orders_fixture = {
-        "data": {
-            "data": [
-                {
-                    "id": 5001,
-                    "channel_order_id": "1001",
-                    "customer_name": "Test User",
-                    "status": "DELIVERED",
-                    "total": "799.00",
-                    "created_at": "2024-01-15T10:30:00+05:30",
-                }
-            ]
-        }
-    }
-    httpx_mock.add_response(json=orders_fixture)
-    records = list(_make_connector().pull("orders"))
-    assert len(records) == 1
-    assert records[0].source_record_id == "order:5001"
-    assert records[0].resource_type == "order"
-    assert records[0].payload["channel_order_id"] == "1001"
-
-
 def test_unknown_resource_raises(httpx_mock):
     with pytest.raises(ValueError, match="Unknown Shiprocket resource"):
         list(_make_connector().pull("banana"))
+
+
+def test_orders_resource_removed(httpx_mock):
+    """'orders' was removed from RESOURCES — pull() must reject it."""
+    with pytest.raises(ValueError, match="Unknown Shiprocket resource"):
+        list(_make_connector().pull("orders"))

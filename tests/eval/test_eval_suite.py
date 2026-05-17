@@ -30,8 +30,8 @@ def _requires_live():
 
 
 def _run_question(question: str, merchant_id: str = "demo") -> dict:
-    import re as _re
     from app.chat.loop import run_chat
+    from app.chat.validator import bare_number_re
     from app.warehouse.db import SessionLocal
 
     start = time.time()
@@ -42,8 +42,7 @@ def _run_question(question: str, merchant_id: str = "demo") -> dict:
     answer = result["answer"]
     # Validator strips cite tags to clean prose — count numbers that survived (each was
     # originally inside a cite tag). CITE_RE.findall on the cleaned answer always returns 0.
-    _NUM_RE = _re.compile(r'\b\d{1,3}(?:,\d{3})+(?:\.\d+)?\b|\b\d{2,}(?:\.\d+)?\b|\b\d+\.\d+\b')
-    cited_count = len(_NUM_RE.findall(answer))
+    cited_count = len(bare_number_re.findall(answer))
 
     return {
         "question": question,

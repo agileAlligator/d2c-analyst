@@ -31,6 +31,11 @@ seed:
 	$(DB_BOOTSTRAP) python3 scripts/normalize.py --merchant demo
 	$(DB_BOOTSTRAP) python3 scripts/normalize.py --merchant demo2
 
+seed2:
+	pip install -e . -q 2>/dev/null || pip install --break-system-packages -e . -q
+	$(DB_BOOTSTRAP) python3 scripts/seed_second_merchant.py
+	$(DB_BOOTSTRAP) python3 scripts/normalize.py --merchant demo2
+
 ingest:
 	$(DB) python3 -m app.ingest.runner --all
 

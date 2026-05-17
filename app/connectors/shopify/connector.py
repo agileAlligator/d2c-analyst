@@ -3,6 +3,8 @@
 import logging
 from collections.abc import Iterator
 
+import httpx
+
 from app.config import settings
 from app.connectors.base import BaseConnector, ConnectorMeta, RawRecord
 
@@ -75,8 +77,11 @@ class ShopifyConnector(BaseConnector):
                         payload=refund,
                         resource_type="refund",
                     )
-            except Exception as e:
-                logger.warning("Failed to fetch refunds for order %s: %s", order_id, e)
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 404:
+                    logger.debug("Order %s not found in Shopify (deleted?), skipping refunds", order_id)
+                else:
+                    raise
 
     def _pull_customers(self, since: str | None) -> Iterator[RawRecord]:
         params: dict = {"limit": 250}

@@ -7,11 +7,11 @@ Each question has:
 - answer_checks: callables that verify answer content (accuracy assertions)
 
 Ground truth from seeded demo merchant (BASE_DATE=2026-05-17):
-  revenue 30d:  ₹31,814     revenue 7d:  ₹6,795
+  revenue 30d:  ₹37,053     revenue 7d:  ₹11,491
     (includes refund events with negative amounts; uses subtotal_price)
-  ad_spend 30d: ₹28,365.69  ad_spend 14d: ₹12,025.71
+  ad_spend 30d: ₹31,465.35  ad_spend 14d: ₹14,526.98
   ROAS 14d: ~1.27x (below 2.0 threshold — agent fires)
-  orders 30d:   27           Shadowfax RTO rate: 21.7% (highest)
+  orders 30d:   33           Shadowfax RTO rate: 21.7% (highest)
   CM 7d order 1063: ₹-8.03  (negative margin)
 """
 
@@ -52,35 +52,35 @@ GOLDEN_QUESTIONS: list[GoldenQuestion] = [
     # ── Revenue ──────────────────────────────────────────────────────────
     GoldenQuestion(
         question="What was total revenue in the last 30 days?",
-        description="Basic revenue query — answer must contain ~₹31,814",
+        description="Basic revenue query — answer must contain ~₹37,053",
         answer_checks=[
-            # ₹31,814 ± 40% — wide range because rolling window slides daily from BASE_DATE
+            # ₹37,053 ± 40% — wide range because rolling window slides daily from BASE_DATE
             _number_in_range(19_000, 45_000),
             _mentions_any("₹", "INR", "revenue"),
         ],
     ),
     GoldenQuestion(
         question="What was total revenue in the last 7 days?",
-        description="Short-window revenue — answer must contain ~₹6,795",
+        description="Short-window revenue — answer must contain ~₹11,491",
         answer_checks=[
-            # ₹6,795 ± 40% — rolling window slides daily from BASE_DATE
-            _number_in_range(4_000, 10_000),
+            # ₹11,491 ± 40% — rolling window slides daily from BASE_DATE
+            _number_in_range(6_000, 16_000),
         ],
     ),
     # ── Ad spend ─────────────────────────────────────────────────────────
     GoldenQuestion(
         question="How much did we spend on Meta Ads in the last 30 days?",
-        description="Ad spend query — must cite raw_meta_insights, ₹28,365.69",
+        description="Ad spend query — must cite raw_meta_insights, ₹31,465.35",
         answer_checks=[
-            # ₹28,365.69 ± 40% — rolling window slides daily from BASE_DATE
+            # ₹31,465.35 ± 40% — rolling window slides daily from BASE_DATE
             _number_in_range(17_000, 40_000),
         ],
     ),
     GoldenQuestion(
         question="How much did we spend on Meta Ads in the last 14 days?",
-        description="14d ad spend — partial window, ₹12,025.71",
+        description="14d ad spend — partial window, ₹14,526.98",
         answer_checks=[
-            # ₹12,025.71 ± 40% — rolling window slides daily from BASE_DATE
+            # ₹14,526.98 ± 40% — rolling window slides daily from BASE_DATE
             _number_in_range(7_200, 17_000),
             _mentions_any("Meta", "ad", "spend"),
         ],
@@ -156,9 +156,9 @@ GOLDEN_QUESTIONS: list[GoldenQuestion] = [
         question="Compare revenue between the last 7 days and the last 30 days.",
         description="Period comparison — tests compare tool, both periods cited",
         answer_checks=[
-            # ₹6,795 (7d) and ₹31,814 (30d) ± 40% — rolling window slides daily from BASE_DATE
-            _number_in_range(4_000, 10_000),  # 7d value ~₹6,795
-            _number_in_range(19_000, 45_000),  # 30d value ~₹31,814
+            # ₹11,491 (7d) and ₹37,053 (30d) ± 40% — rolling window slides daily from BASE_DATE
+            _number_in_range(6_000, 16_000),  # 7d value ~₹11,491
+            _number_in_range(19_000, 50_000),  # 30d value ~₹37,053
         ],
     ),
     # ── AOV ──────────────────────────────────────────────────────────────

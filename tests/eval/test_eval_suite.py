@@ -117,7 +117,7 @@ class TestAccuracy:
     """Answer content matches known ground truth from seeded data."""
 
     def test_revenue_30d_ballpark(self):
-        """30d revenue should be ~₹31,814 (includes refunds, uses subtotal_price).
+        """30d revenue should be ~₹37,053 (includes refunds, uses subtotal_price).
         Range is ±40% to stay valid as the rolling window slides from BASE_DATE=2026-05-17."""
         r = _run_question("What was total revenue in the last 30 days?")
         import re
@@ -125,7 +125,7 @@ class TestAccuracy:
         raw = re.findall(r"[\d,]+(?:\.\d+)?", r["answer"])
         nums = [float(n.replace(",", "")) for n in raw if n.replace(",", "").replace(".", "").isdigit()]
         assert any(19_000 <= n <= 45_000 for n in nums), (
-            f"Expected ~31814 (±40%) in answer, got numbers: {nums}\nAnswer: {r['answer']}"
+            f"Expected ~37053 (±40%) in answer, got numbers: {nums}\nAnswer: {r['answer']}"
         )
 
     def test_highest_rto_courier_is_shadowfax(self):
@@ -136,15 +136,16 @@ class TestAccuracy:
     def test_negative_cm_order_1063(self):
         """Order 1063 has contribution margin of ₹-8.03 — only negative this week."""
         r = _run_question("Which orders had negative contribution margin in the last 7 days?")
-        # Ground truth: order 1063 has CM of ₹-8.03. "no orders" / "none" are hallucinations.
+        # Ground truth: order 1063 has CM of ₹-8.03. Require the specific order number —
+        # a denial like "no orders with negative margin" contains "negative" and would
+        # falsely pass an OR check against has_negative_amount.
         has_order = "1063" in r["answer"]
-        has_negative_amount = any(t in r["answer"].lower() for t in ["negative", "-8"])
-        assert has_order or has_negative_amount, (
-            f"Expected order 1063 (₹-8.03 CM) or a specific negative amount. Answer: {r['answer']}"
+        assert has_order, (
+            f"Expected order 1063 (₹-8.03 CM) to be named in answer. Answer: {r['answer']}"
         )
 
     def test_ad_spend_30d_ballpark(self):
-        """30d ad spend should be ~₹28,365.69 from seeded data.
+        """30d ad spend should be ~₹31,465.35 from seeded data.
         Range is ±40% to stay valid as the rolling window slides from BASE_DATE=2026-05-17."""
         r = _run_question("How much did we spend on Meta Ads in the last 30 days?")
         import re
@@ -152,7 +153,7 @@ class TestAccuracy:
         raw = re.findall(r"[\d,]+(?:\.\d+)?", r["answer"])
         nums = [float(n.replace(",", "")) for n in raw if n.replace(",", "").replace(".", "").isdigit()]
         assert any(17_000 <= n <= 40_000 for n in nums), (
-            f"Expected ~28366 (±40%) in answer, got: {nums}\nAnswer: {r['answer']}"
+            f"Expected ~31465 (±40%) in answer, got: {nums}\nAnswer: {r['answer']}"
         )
 
     def test_rto_by_courier_lists_all_couriers(self):
@@ -162,17 +163,17 @@ class TestAccuracy:
             assert courier in r["answer"], f"Expected {courier} in RTO answer. Answer: {r['answer']}"
 
     def test_period_comparison_contains_both_values(self):
-        """Comparison answer must contain values for both 7d (~6,795) and 30d (~31,814).
+        """Comparison answer must contain values for both 7d (~11,491) and 30d (~37,053).
         Ranges are ±40% to stay valid as the rolling window slides from BASE_DATE=2026-05-17."""
         r = _run_question("Compare revenue between the last 7 days and the last 30 days.")
         import re
 
         raw = re.findall(r"[\d,]+(?:\.\d+)?", r["answer"])
         nums = [float(n.replace(",", "")) for n in raw if n.replace(",", "").replace(".", "").isdigit()]
-        has_7d = any(4_000 <= n <= 10_000 for n in nums)
-        has_30d = any(19_000 <= n <= 45_000 for n in nums)
+        has_7d = any(6_000 <= n <= 16_000 for n in nums)
+        has_30d = any(19_000 <= n <= 50_000 for n in nums)
         assert has_7d and has_30d, (
-            f"Expected both 7d (~6795) and 30d (~31814) values. Got: {nums}\nAnswer: {r['answer']}"
+            f"Expected both 7d (~11491) and 30d (~37053) values. Got: {nums}\nAnswer: {r['answer']}"
         )
 
     def test_cm_7d_includes_order_1063(self):

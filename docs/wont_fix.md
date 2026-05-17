@@ -265,3 +265,19 @@ If a code path forgets to call `set_merchant()` before a query, `current_setting
 **Why deferred**: Proposal is labelled as `would_do_api_call` (simulated, not executed); the calculation is directionally correct (low-ROAS campaign → reduce spend) even if the ₹ estimate is wrong.
 
 **Production fix**: compute `net_impact = spend_cut * (1 - blended_roas)`; add both gross and net lines to the proposal note.
+
+## 40. `compare()` tool sums rate metrics when group_by is added
+
+`_compare()` in `app/chat/tools.py` calls `sum(float(r[value_col]) for r in rows)` to aggregate multi-row results. For rate/ratio metrics (`rto_rate`, `roas`, `cac`, `average_order_value`), summing values across groups produces an arithmetically meaningless number (e.g. summing per-courier RTO rates). The tool schema doesn't currently expose `group_by` for `compare`, so the model can't trigger this today. Latent risk if the tool schema is extended. Fix: for rate metrics, compute the aggregate from the underlying numerator/denominator rather than summing the ratio values, or reject `compare()` with `group_by` for rate metrics. Scope: catalog + compare handler change.
+
+## 41. DuckDB sandbox has no memory limit or statement timeout
+
+`duckdb.connect(database=":memory:")` in `app/warehouse/duckdb_view.py` uses no `memory_limit`, thread count, or query timeout. A pathological query (large CROSS JOIN, recursive CTE, explosive `ARRAY_AGG`) can OOM the host process or hang indefinitely. `SET` is in the forbidden tokens so the model cannot tune at runtime, and the app doesn't set a sane default at connect time. Fix: before adding `SET` to the forbidden-token list, execute `conn.execute("SET memory_limit='1GB'; SET threads=2;")` at connect time; wrap `conn.execute(query_exec)` in a thread with a timeout. Scope: sandbox connect setup.
+
+## 42. CAC metric provenance omits order events
+
+`query_metric(cac)` collects provenance only from the ad_spend events (the numerator). The denominator `total_orders` is computed from `order_revenue` events but those event IDs are not added to the provenance bundle. A user who asks "how was the CAC calculated?" can trace the spend half but not the order-count half. Fix: collect order event_ids in the `orders` CTE and union them into the provenance lookup, mirroring the `roas` metric which already does this. Scope: catalog SQL change.
+
+## 43. Meta campaigns cursor never advances
+
+The campaigns resource for Meta Ads (`app/connectors/meta_ads/connector.py`) requests fields `id,name,status,objective,daily_budget,lifetime_budget,start_time,stop_time` — none of which is `updated_at`/`date_stop`/`created_at`. The ingest runner's cursor logic (`runner.py:93`) finds no timestamp to advance, so the cursor stays at `None` and ALL campaigns are re-fetched on every ingest run. This is idempotent (upsert dedups on `source_record_id`) but wasteful and burns Meta rate-limit quota. Fix: add `updated_time` to the campaigns fields list and key the cursor on it. Scope: connector fields list.

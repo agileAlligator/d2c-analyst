@@ -381,7 +381,7 @@ Honest per-file breakdown:
 | `app/chat/loop.py` | Specified tool schema, retry logic, routing contract | Generated API calls and message threading; I added `for...else` MAX_TURNS guard |
 | `app/chat/routing/` | Designed signals and cascade contract; chose FrugalGPT over RouteLLM (OpenAI path only) | Generated HeuristicRouter and signal regexes; I reviewed all 8 signals |
 | `app/agents/margin_watch.py` | Specified 3 proposal types and NOT_SENT contract | Generated proposal logic; I verified ₹ impact calculations |
-| `scripts/seed_demo_merchant.py` | Specified ground-truth values (₹31,814 30d revenue, Shadowfax 21.7% RTO) | Generated fixture data |
+| `scripts/seed_demo_merchant.py` | Specified ground-truth values (₹37,053 30d revenue, Shadowfax 21.7% RTO) | Generated fixture data |
 | `tests/eval/golden_questions.py` | Specified questions, ground-truth assertions, adversarial cases | Generated test bodies; I fixed 2 wrong assertions and added 3 adversarial questions |
 | README | Wrote all prose | Drafted structure for some sections |
 

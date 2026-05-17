@@ -189,6 +189,11 @@ Multi-round parallel Opus audit → Sonnet fix → Opus review loop. Fixes appli
 - **Seed BASE_DATE stale** — bumped from 2026-05-13 to 2026-05-17 in both seed scripts.
 - **.env.example missing DEV_MODE** — added.
 - **Test count** — updated to 312.
+- **Eval ranges corrected** — live DB measures ₹37,053 (30d), ₹11,491 (7d), ₹31,465 (ad_spend 30d), ₹14,527 (ad_spend 14d), 33 orders (30d); golden-question ranges and ground-truth comments updated to match; `test_negative_cm_order_1063` tightened to require order ID "1063" (not just the word "negative").
+- **`.env.example` DATABASE_URL** — changed to `d2c_app:d2c_app` (app role) so fresh-clone users don't accidentally run as superuser and bypass RLS.
+- **Connector resource leak fixed** — `run_connector` now uses try/finally to guarantee `connector.close()` on exception.
+- **`_pull_refunds` exception scope** — narrowed from bare `except Exception` to `except httpx.HTTPStatusError` (re-raise non-404); 401/403 (revoked token, missing scope) now propagate instead of being silently swallowed.
+- **4 new wont_fix entries** (#40–43): compare rate-metric summation, DuckDB memory limit, CAC one-sided provenance, Meta campaigns cursor.
 
 ## v0.1.11 adversarial hardening (round 6)
 

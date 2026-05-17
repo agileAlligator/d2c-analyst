@@ -53,53 +53,58 @@ def run_connector(merchant_id: str, connector_name: str, db: Session) -> int:
     run_id = new_run_id()
     total = 0
 
-    for resource in connector.meta().resources:
-        cursor = get_cursor(db, merchant_id, connector_name, resource)
-        logger.info("[%s] pulling %s/%s since %s", merchant_id, connector_name, resource, cursor)
+    try:
+        for resource in connector.meta().resources:
+            cursor = get_cursor(db, merchant_id, connector_name, resource)
+            logger.info("[%s] pulling %s/%s since %s", merchant_id, connector_name, resource, cursor)
 
-        latest_cursor = cursor
-        count = 0
+            latest_cursor = cursor
+            count = 0
 
-        for record in connector.pull(resource, since=cursor):
-            entry = RAW_MODEL_MAP.get((connector_name, record.resource_type))
-            if entry is None:
-                continue
-            model_cls, constraint_name = entry
+            for record in connector.pull(resource, since=cursor):
+                entry = RAW_MODEL_MAP.get((connector_name, record.resource_type))
+                if entry is None:
+                    continue
+                model_cls, constraint_name = entry
 
-            stmt = (
-                pg_insert(model_cls.__table__)
-                .values(
-                    id=uuid.uuid4(),
-                    merchant_id=merchant_id,
-                    source_record_id=record.source_record_id,
-                    payload=record.payload,
-                    fetched_at=datetime.now(UTC),
-                    run_id=run_id,
+                stmt = (
+                    pg_insert(model_cls.__table__)
+                    .values(
+                        id=uuid.uuid4(),
+                        merchant_id=merchant_id,
+                        source_record_id=record.source_record_id,
+                        payload=record.payload,
+                        fetched_at=datetime.now(UTC),
+                        run_id=run_id,
+                    )
+                    .on_conflict_do_update(
+                        constraint=constraint_name,
+                        # Preserve the original payload for provenance round-trip integrity.
+                        # APIs sometimes return partial representations on re-fetch (Shopify
+                        # lightweight events vs full order fetch); overwriting could corrupt the
+                        # source record that citations resolve to. Only update run metadata.
+                        set_={"fetched_at": datetime.now(UTC), "run_id": run_id},
+                    )
                 )
-                .on_conflict_do_update(
-                    constraint=constraint_name,
-                    # Preserve the original payload for provenance round-trip integrity.
-                    # APIs sometimes return partial representations on re-fetch (Shopify
-                    # lightweight events vs full order fetch); overwriting could corrupt the
-                    # source record that citations resolve to. Only update run metadata.
-                    set_={"fetched_at": datetime.now(UTC), "run_id": run_id},
+                db.execute(stmt)
+                count += 1
+                total += 1
+
+                # Update cursor to latest seen timestamp if available
+                ts = (
+                    record.payload.get("updated_at")
+                    or record.payload.get("date_stop")
+                    or record.payload.get("created_at")
                 )
-            )
-            db.execute(stmt)
-            count += 1
-            total += 1
+                if ts and (latest_cursor is None or ts > latest_cursor):
+                    latest_cursor = ts
 
-            # Update cursor to latest seen timestamp if available
-            ts = record.payload.get("updated_at") or record.payload.get("date_stop") or record.payload.get("created_at")
-            if ts and (latest_cursor is None or ts > latest_cursor):
-                latest_cursor = ts
-
-        db.commit()
-        if latest_cursor and latest_cursor != cursor:
-            save_cursor(db, merchant_id, connector_name, resource, latest_cursor)
-        logger.info("[%s] %s/%s: ingested %d records", merchant_id, connector_name, resource, count)
-
-    connector.close()
+            db.commit()
+            if latest_cursor and latest_cursor != cursor:
+                save_cursor(db, merchant_id, connector_name, resource, latest_cursor)
+            logger.info("[%s] %s/%s: ingested %d records", merchant_id, connector_name, resource, count)
+    finally:
+        connector.close()
     return total
 
 

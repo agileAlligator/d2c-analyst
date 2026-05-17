@@ -100,19 +100,10 @@ def _is_yearlike(n: str, ctx_before: str = "", ctx_after: str = "") -> bool:
     return False
 
 
-def _extract_number(s: str) -> float | None:
-    cleaned = re.sub(r"[₹$€£,\s]", "", s)
-    m = re.search(r"-?\d+\.?\d*", cleaned)
-    try:
-        return float(m.group()) if m else None
-    except (ValueError, AttributeError):
-        return None
-
-
 def _extract_all_numbers(text: str) -> list[float]:
     """Return all numeric values from text, stripping currency symbols and commas."""
     cleaned_text = re.sub(r"[₹$,]", "", text)
-    return [float(m) for m in re.findall(r"-?\d+\.?\d*", cleaned_text) if m]
+    return [float(m) for m in re.findall(r"(?<!\d)-?\d+\.?\d*", cleaned_text) if m]
 
 
 def validate_and_clean(

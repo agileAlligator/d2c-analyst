@@ -152,7 +152,7 @@ The `compare(metric, period_a, period_b)` tool generates synthetic IDs like `com
 
 ## 15. Wall-clock `NOW()` makes README ₹ figures time-bounded
 
-Metric queries use `NOW() - INTERVAL '...'` while seed data is anchored to BASE_DATE=2026-05-17. README figures (₹31,814 30d revenue, ROAS 1.27x, ₹4,642/month) are accurate only while the rolling window intersects the seeded date range. Past roughly 2026-07-17, the 30d window returns zero seed orders. Fix: a configurable `AS_OF_DATE` parameter in metric queries, or advance BASE_DATE before each submission demo. Scope: v0.2.
+Metric queries use `NOW() - INTERVAL '...'` while seed data is anchored to BASE_DATE=2026-05-17. README figures (₹37,053 30d revenue, ROAS 1.27x, ₹4,642/month) are accurate only while the rolling window intersects the seeded date range. Past roughly 2026-07-17, the 30d window returns zero seed orders. Fix: a configurable `AS_OF_DATE` parameter in metric queries, or advance BASE_DATE before each submission demo. Scope: v0.2.
 
 ## 16. `raw_shopify_products` and `raw_shopify_customers` have no downstream normalizer
 
@@ -281,3 +281,11 @@ If a code path forgets to call `set_merchant()` before a query, `current_setting
 ## 43. Meta campaigns cursor never advances
 
 The campaigns resource for Meta Ads (`app/connectors/meta_ads/connector.py`) requests fields `id,name,status,objective,daily_budget,lifetime_budget,start_time,stop_time` — none of which is `updated_at`/`date_stop`/`created_at`. The ingest runner's cursor logic (`runner.py:93`) finds no timestamp to advance, so the cursor stays at `None` and ALL campaigns are re-fetched on every ingest run. This is idempotent (upsert dedups on `source_record_id`) but wasteful and burns Meta rate-limit quota. Fix: add `updated_time` to the campaigns fields list and key the cursor on it. Scope: connector fields list.
+
+## 44. `compare()` tool uses overlapping trailing windows, not period-over-period
+
+The `compare(period_a, period_b)` tool accepts values from `["7d","14d","30d","90d"]` — all rolling windows anchored to NOW(). Any two values produce strictly nested windows (e.g., "7d" is a subset of "30d"), so `delta = val_b - val_a` measures the non-overlapping tail (days 8-30), and `pct_change = delta/val_a` is a ratio of one window's tail to its head. A "compare 7d vs 30d" query does not compare "this week vs this month" in the conventional sense. The system prompt steers the model to call `query_metric` twice for true period-over-period comparisons, but `compare`'s own tool description is misleading. Fix: accept explicit start/end timestamps, or rename the params to make the nested-window semantics explicit. Scope: catalog SQL + tool schema change.
+
+## 45. `_pull_refunds` in Shopify connector re-fetches all orders via API
+
+`app/connectors/shopify/connector.py:_pull_refunds()` iterates `_pull_orders(since)` solely to discover order IDs, then calls the Shopify `/orders/{id}/refunds.json` endpoint for each. This means every ingest run that includes "refunds" makes a full second sweep of all recent orders via the Shopify API — doubling the rate-limit cost and wall-clock time. The orders were already fetched moments earlier under the "orders" resource. Fix: read order IDs from `raw_shopify_orders` in the local Postgres DB instead of re-calling Shopify. Scope: connector + runner coordination.

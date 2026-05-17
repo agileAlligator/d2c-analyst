@@ -319,7 +319,6 @@ METRIC_SQL: dict[str, str] = {
     """,
 }
 
-# SKU grouping uses a lateral join subquery (templated as a special case in query_metric)
 GROUP_BY_EXPRESSIONS = {
     "campaign": "en.attributes->>'name'",
     "courier": "en.attributes->>'courier'",

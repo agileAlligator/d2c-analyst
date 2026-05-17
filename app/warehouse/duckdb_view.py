@@ -88,10 +88,9 @@ def sandboxed_sql(query: str, merchant_id: str) -> tuple[list[dict], list[str]]:
             conn.execute(
                 f"CREATE OR REPLACE TEMP VIEW {tbl} AS SELECT * FROM pg.{tbl} WHERE merchant_id = '{quoted_mid}'"
             )
-        # Stub out internal tables that lack merchant_id columns but are visible
-        # to DuckDB via the superuser ATTACH.  WHERE FALSE makes them always return
-        # empty, preventing schema enumeration and cross-merchant data access while
-        # still letting references resolve without a "table not found" error.
+        # Stub out internal operational tables with empty views so bare-name
+        # references hit an empty result set rather than falling through to the
+        # Postgres attachment (which uses the superuser and bypasses RLS).
         for internal_tbl in ("agent_runs", "ingest_cursors", "ingest_jobs"):
             conn.execute(
                 f"CREATE OR REPLACE TEMP VIEW {internal_tbl} AS SELECT * FROM pg.public.{internal_tbl} WHERE FALSE"
@@ -224,6 +223,22 @@ _FORBIDDEN_TOKENS = {
     "BEGIN",
     "COMMIT",
     "ROLLBACK",
+    # chr()/concat()/query()/query_table() enable dynamic SQL construction:
+    # query(chr(83)||chr(69)||...) builds arbitrary SQL strings at runtime,
+    # bypassing every token-level check. Block all of them.
+    "QUERY",
+    "QUERY_TABLE",
+    "CHR",
+    "CONCAT",
+    # current_setting() exposes DuckDB internal config values one key at a time,
+    # even though duckdb_settings() is blocked.
+    "CURRENT_SETTING",
+    # Additional file-read table functions (blocked at engine level by
+    # disabled_filesystems too, but defense-in-depth blocklist entry is cheap).
+    "READ_NDJSON",
+    "READ_NDJSON_OBJECTS",
+    "READ_JSON_OBJECTS_AUTO",
+    "READ_DUCKDB",
     # Raw tables — not shadowed by merchant-scoped views, so unqualified references
     # would bypass merchant isolation by resolving against the Postgres attachment.
     "RAW_SHOPIFY_ORDERS",

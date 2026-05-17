@@ -180,7 +180,7 @@ Every proposal includes:
 - The provenance IDs that support the claim
 - The API call it *would* have made — serialized JSON with `"NOT_SENT": True`
 
-Real run output (`make agent` on seed data, BASE_DATE=2026-05-17):
+Real run output (`make agent` on seed data, BASE_DATE=2026-05-17; timestamps abbreviated from full ISO-8601):
 
 ```
 [2026-05-17] Flagged 2 orders with negative contribution margin.

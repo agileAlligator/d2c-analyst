@@ -30,7 +30,6 @@ class BaseAgent:
     def __init__(self, db: Session, merchant_id: str):
         self.db = db
         self.merchant_id = merchant_id
-        self._run_id = str(uuid.uuid4())
         self._log_lines: list[str] = []
         self._proposals: list[Proposal] = []
 

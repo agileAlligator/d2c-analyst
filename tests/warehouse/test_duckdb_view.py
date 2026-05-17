@@ -273,3 +273,26 @@ class TestSandboxedSqlRealQueries:
             "demo",
         )
         assert rows[0]["n"] == 0, "demo query leaked demo2 rows through JOIN"
+
+
+class TestDynamicSqlBypassBlocked:
+    """chr()/concat()/query() dynamic SQL construction must be rejected."""
+
+    def test_chr_blocked(self):
+        with pytest.raises(ValueError, match="Forbidden"):
+            _validate_query("SELECT chr(65)")
+
+    def test_query_function_blocked(self):
+        with pytest.raises(ValueError, match="Forbidden"):
+            _validate_query("SELECT * FROM query('SELECT 1')")
+
+    def test_chr_concat_chain_blocked(self):
+        """The confirmed cross-tenant bypass vector."""
+        with pytest.raises(ValueError, match="Forbidden"):
+            _validate_query(
+                "SELECT * FROM query(chr(83)||chr(69)||chr(76)||chr(69)||chr(67)||chr(84)||chr(32)||chr(49))"
+            )
+
+    def test_current_setting_blocked(self):
+        with pytest.raises(ValueError, match="Forbidden"):
+            _validate_query("SELECT current_setting('secret_directory')")

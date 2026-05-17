@@ -169,7 +169,7 @@ class MarginWatchAgent(BaseAgent):
                     expected_inr_impact=total_spend * pause_fraction,
                     reasoning=(
                         f"Blended ROAS is {blended_roas:.2f}x over the last 14 days "
-                        f"(₹{total_spend:,.0f} spend, ₹{total_revenue:,.0f} attributed revenue). "
+                        f"(₹{total_spend:,.0f} spend, ₹{total_revenue:,.0f} all-channel revenue). "
                         f"Pausing the bottom {pause_fraction:.0%} of campaigns by spend could save "
                         f"~₹{total_spend * pause_fraction:,.0f} while preserving higher-ROAS campaigns."
                     ),

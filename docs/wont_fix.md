@@ -209,3 +209,23 @@ When step 1 of `validate_and_clean` marks a cite tag unresolvable, it replaces `
 ## 29. ingest_cursors RLS policy has no WITH CHECK — write-side unfiltered
 
 The RLS policy added to `ingest_cursors` in `app/warehouse/migrations/create_cursors.py` has only a `USING` clause. In Postgres, `USING` governs SELECT/UPDATE/DELETE row visibility; INSERT rows are governed by `WITH CHECK`. Without `WITH CHECK`, `d2c_app` can insert cursor rows with any `merchant_id` regardless of `app.current_merchant`. In practice the ingest runner is a trusted server-side process that correctly sets the GUC before writing, so this is defense-in-depth rather than an active exploit path. Fix: add `WITH CHECK (merchant_id = current_setting('app.current_merchant', true))` to the policy. Same pattern applies to other tables' RLS policies. Scope: migration refactor; consistent with the rest of the codebase (other tables also lack WITH CHECK).
+
+## 30. Meta Ads purchase count uses first matching attribution window
+
+`app/normalize/meta_to_universal.py` uses `next(a for a in actions if a["action_type"]=="purchase")` which takes the first `purchase` entry from Meta's `actions[]` array. Meta may return multiple `purchase` entries for different attribution windows (e.g., `1d_click`, `7d_click`, `7d_click_1d_view`). The selected window depends on the API's return order, which is not guaranteed. Fix: explicitly select a canonical attribution window (e.g., prefer `7d_click` or the default Meta attribution window) rather than taking the first. Scope: normalizer update; requires an attribution window policy decision.
+
+## 31. Validator value-check uses `any` — secondary numbers in multi-number cites are not independently verified
+
+`validate_and_clean` checks that `any` number in a multi-number cite value matches a tool result. `<cite>₹31,814 (was ₹99,999)</cite>` passes if only 31,814 is in `tool_value_set`, even if 99,999 is hallucinated context. The alternative (`all` must match) would reject valid cites that include historical comparison values that aren't in the current turn's tool results. Current behavior is intentional: the primary cited value must be grounded, but explanatory context numbers (e.g., prior-period comparisons) are not independently verified. Fix: expose a strict mode requiring all numbers to match. Scope: validator interface change.
+
+## 32. Revenue group_by=date buckets refund events by refund date, not order date
+
+`query_metric(revenue, group_by="date")` uses `DATE(ev.occurred_at)` for all event types. Refund events carry `occurred_at = refund.created_at`, not the original order date. "Revenue on 2026-05-01" nets refunds processed on that date against orders placed on that date — cash-basis recognition. This can produce negative daily revenue and confuse date-anchored trend analysis. Fix: add a bucketing policy parameter (event-date vs order-date) and join refund events to their original order entity to use the order date for refund attribution. Scope: catalog SQL change.
+
+## 33. `set_merchant` absence silently returns zero rows rather than erroring
+
+If a code path forgets to call `set_merchant()` before a query, `current_setting('app.current_merchant', true)` returns `''`, the RLS policy reduces to `merchant_id = ''`, and all queries return zero rows instead of raising an error. Combined with wont_fix #18 (CI uses superuser, doesn't exercise `d2c_app`), a regression that removes a `set_merchant()` call would produce silent empty results in production without any test failure. Fix: add an assertion in `get_db()` or a trigger that raises when `app.current_merchant` is unset. Scope: DB session initialization change.
+
+## 34. `query_metric` `filters` parameter is silently ignored
+
+`app/warehouse/metrics/catalog.py` accepts a `filters: dict | None = None` parameter in the function signature, but the parameter is never substituted into the SQL (`extra_filters` is always `""`). Callers passing filters expecting them to apply get unfiltered results with no error or warning. Fix: implement the filter substitution, or remove the parameter. Scope: catalog SQL update.

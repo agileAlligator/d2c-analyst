@@ -90,6 +90,15 @@ def sandboxed_sql(query: str, merchant_id: str) -> tuple[list[dict], list[str]]:
                 f"CREATE OR REPLACE TEMP VIEW {tbl} AS "
                 f"SELECT * FROM pg.{tbl} WHERE merchant_id = '{quoted_mid}'"
             )
+        # Stub out internal tables that lack merchant_id columns but are visible
+        # to DuckDB via the superuser ATTACH.  WHERE FALSE makes them always return
+        # empty, preventing schema enumeration and cross-merchant data access while
+        # still letting references resolve without a "table not found" error.
+        for internal_tbl in ("agent_runs", "ingest_cursors", "ingest_jobs"):
+            conn.execute(
+                f"CREATE OR REPLACE TEMP VIEW {internal_tbl} AS "
+                f"SELECT * FROM pg.public.{internal_tbl} WHERE FALSE"
+            )
         result = conn.execute(query_exec).fetchdf()
         rows = result.to_dict(orient="records")
         prov_ids: list[str] = []
@@ -113,6 +122,12 @@ _FORBIDDEN_TOKENS = {
     # DuckDB postgres extension functions — bypass merchant-scoped views entirely
     # by sending raw SQL directly to Postgres over the ATTACH'd connection.
     "POSTGRES_QUERY", "POSTGRES_EXECUTE",
+    # postgres_scan / postgres_scan_pushdown open a NEW Postgres connection,
+    # bypassing the merchant-scoped temp views entirely.
+    "POSTGRES_SCAN", "POSTGRES_SCAN_PUSHDOWN",
+    # SET can re-enable filesystems (SET disabled_filesystems='') or cause DoS
+    # (SET memory_limit='1B'); RESET undoes hardened settings; USE switches schema.
+    "SET", "RESET", "USE",
     # DuckDB introspection functions that expose credentials/secrets
     "DUCKDB_SETTINGS", "DUCKDB_SECRETS", "DUCKDB_EXTENSIONS",
     "DUCKDB_COLUMNS", "DUCKDB_TABLES", "DUCKDB_VIEWS",
@@ -152,6 +167,12 @@ def _validate_query(query: str) -> None:
     forbidden_found = tokens & _FORBIDDEN_TOKENS
     if forbidden_found:
         raise ValueError(f"Forbidden SQL tokens: {forbidden_found}")
-    # Block schema-qualified pg access in all forms: pg.table, "pg".table, `pg`.table
-    if re.search(r'(?:\bpg\b|"pg"|`pg`)\s*\.', clean, re.IGNORECASE):
-        raise ValueError("Direct schema access (pg.) not permitted — use bare table names")
+    # Block schema-qualified pg access in all forms: pg.table, "pg".table, `pg`.table,
+    # pg_catalog.pg_settings, information_schema.tables, etc.
+    if re.search(
+        r'(?:\bpg\b|"pg"|`pg`)\s*\.'
+        r'|(?:\bpg_catalog\b|"pg_catalog")\s*\.'
+        r'|(?:\binformation_schema\b|"information_schema")\s*\.',
+        clean, re.IGNORECASE
+    ):
+        raise ValueError("Direct schema access not permitted — use bare table names")

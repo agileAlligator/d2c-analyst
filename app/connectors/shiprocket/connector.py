@@ -7,7 +7,7 @@ from app.connectors.base import BaseConnector, ConnectorMeta, RawRecord
 
 logger = logging.getLogger(__name__)
 
-RESOURCES = ["orders", "shipments"]
+RESOURCES = ["shipments"]
 BASE = "https://apiv2.shiprocket.in/v1/external"
 
 

@@ -37,8 +37,6 @@ RAW_MODEL_MAP: dict[tuple[str, str], tuple[type, str]] = {
     ("meta_ads", "insight"):   (RawMetaInsight,         "uq_raw_meta_insights"),
     ("meta_ads", "campaign"):  (RawMetaCampaign,        "uq_raw_meta_campaigns"),
     ("shiprocket", "shipment"): (RawShiprocketShipment, "uq_raw_shiprocket_shipments"),
-    # Shiprocket "order" payloads map to the shipments table (same schema, different call path)
-    ("shiprocket", "order"):   (RawShiprocketShipment, "uq_raw_shiprocket_shipments"),
 }
 
 

@@ -200,7 +200,8 @@ def _sql(db: Session, merchant_id: str, query: str) -> dict:
 
 _RAW_TABLES = [
     "raw_shopify_orders", "raw_shopify_products", "raw_shopify_refunds",
-    "raw_meta_insights", "raw_meta_campaigns", "raw_shiprocket_shipments",
+    "raw_shopify_customers", "raw_meta_insights", "raw_meta_campaigns",
+    "raw_shiprocket_shipments",
 ]
 
 

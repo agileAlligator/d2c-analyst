@@ -10,7 +10,7 @@ DB_ANALYTICS=DATABASE_URL_ANALYTICS=postgresql://d2c:d2c@localhost:5434/d2c
 bootstrap: ## Full first-run: start db, seed, start api+ui
 	docker compose up -d db
 	until docker compose exec -T db pg_isready -U d2c -q; do sleep 1; done
-	pip install -e . -q
+	pip install -e ".[dev]" -q
 	$(DB_BOOTSTRAP) python3 scripts/seed_demo_merchant.py
 	$(DB_BOOTSTRAP) python3 scripts/seed_second_merchant.py
 	$(DB_BOOTSTRAP) python3 scripts/normalize.py --merchant demo

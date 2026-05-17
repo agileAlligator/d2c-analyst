@@ -122,7 +122,7 @@ class MarginWatchAgent(BaseAgent):
                 f"Switching from '{courier}' (RTO rate {worst_rate:.1%}) to '{best_name}' "
                 f"(RTO rate {best_rate:.1%}) on {int(total_ships)} shipments could save "
                 f"~₹{est_impact:,.0f} "
-                f"({worst_rate:.1%} − {best_rate:.1%} × ₹{settings.rto_unit_cost_inr:.0f}/RTO)."
+                f"({worst_rate:.1%} − {best_rate:.1%}) × ₹{settings.rto_unit_cost_inr:.0f}/RTO × {int(total_ships)} shipments."
             ),
             provenance_ids=result.provenance_ids[:5],
             would_do_api_call={

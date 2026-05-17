@@ -384,6 +384,12 @@ def query_metric(
                 "so per-group ROAS would divide per-group revenue by total spend (wrong). "
                 "Query revenue and ad_spend separately with group_by, then compute ROAS per group."
             )
+        if metric_name == "rto_rate" and group_by in ("date", "week", "month"):
+            raise ValueError(
+                "Metric 'rto_rate' does not support date/week/month group_by — "
+                "the agg CTE joins entities, not events, so ev.occurred_at is out of scope. "
+                "Use group_by='courier' to break down by carrier."
+            )
         if "{group_by_select}" not in template or "{group_by_clause}" not in template:
             raise ValueError(
                 f"Metric '{metric_name}' does not support group_by='{group_by}'. "

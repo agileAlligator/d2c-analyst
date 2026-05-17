@@ -1,7 +1,7 @@
 # Project Status
 
 **Last updated:** 2026-05-17
-**Phase:** Complete — v0.1.10 (adversarial hardening round 5)
+**Phase:** Complete — v0.1.11 (adversarial hardening round 6)
 
 ## What's built
 
@@ -173,6 +173,12 @@ Multi-round parallel Opus audit → Sonnet fix → Opus review loop. Fixes appli
 - **README connector resource lists** — Shopify list was missing `customers`; Shiprocket "RTO events" was stale (derived, not a connector resource); "SKUs" corrected to "orders" (agent works at order grain); connector file paths corrected in AI-tools table.
 - **wont_fix.md entries #36–39 added** — `_collect_tool_numbers` numeric ID pollution, `get_raw` payload polluting `tool_value_set`, `meta_to_universal` UTC timezone assumption, `margin_watch` overstated adset pause impact.
 - **Test count** — updated to 291 total.
+
+## v0.1.11 adversarial hardening (round 6)
+
+- **`/runs` + `/runs/{id}` RLS gap** — endpoints queried `agent_runs` without calling `set_merchant`; with `d2c_app` role (NOSUPERUSER NOBYPASSRLS), the GUC was unset and RLS returned 0 rows silently. Added `set_merchant(db, merchant_id)` to both endpoints.
+- **`rto_rate` group_by date/week/month SQL error** — `GROUP_BY_EXPRESSIONS` references `ev.occurred_at` but `rto_rate`'s agg CTE has no `ev` alias in scope; query failed with `column ev.occurred_at does not exist`. Added explicit `ValueError` guard matching the existing `roas` pattern.
+- **Shopify `void` transactions counted as refunds** — `kind="void"` is a pre-capture authorization void, not a refund; over-counted refunds → under-counted revenue. Fixed to `kind == "refund"` only.
 
 ## Known limitations
 

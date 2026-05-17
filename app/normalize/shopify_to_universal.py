@@ -113,7 +113,7 @@ def _upsert_refund(db: Session, merchant_id: str, raw: RawShopifyRefund):
     total_refund = sum(
         Decimal(str(t.get("amount", "0")))
         for t in p.get("transactions", [])
-        if t.get("kind") in ("refund", "void")
+        if t.get("kind") == "refund"
     )
     occurred_at = _parse_dt(p.get("created_at"))
     if occurred_at and total_refund > 0:

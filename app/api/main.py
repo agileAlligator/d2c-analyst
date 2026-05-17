@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.chat.loop import run_chat
 from app.config import settings
-from app.warehouse.db import get_db
+from app.warehouse.db import get_db, set_merchant
 from app.warehouse.models import AgentRun
 
 logger = logging.getLogger(__name__)
@@ -86,6 +86,7 @@ def list_runs(
     db: Session = Depends(get_db),
     merchant_id: str = Depends(get_merchant_id),
 ):
+    set_merchant(db, merchant_id)
     runs = (
         db.query(AgentRun)
         .filter(AgentRun.merchant_id == merchant_id)
@@ -112,6 +113,7 @@ def get_run(
     db: Session = Depends(get_db),
     merchant_id: str = Depends(get_merchant_id),
 ):
+    set_merchant(db, merchant_id)
     run = db.query(AgentRun).filter(
         AgentRun.id == run_id,
         AgentRun.merchant_id == merchant_id,

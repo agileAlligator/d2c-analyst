@@ -32,8 +32,8 @@ _request_headers = {"X-API-Key": _api_key} if _api_key else {}
 
 SUGGESTED_QUESTIONS = [
     "What was total revenue in the last 30 days?",
-    "What is my contribution margin per order this week?",
-    "Which orders had negative contribution margin last month?",
+    "What is my contribution margin per order in the last 7 days?",
+    "Which orders had negative contribution margin in the last 30 days?",
     "Which courier has the highest RTO rate?",
     "What is our RTO rate by courier in the last 30 days?",
     "How much did we spend on Meta Ads in the last 30 days?",

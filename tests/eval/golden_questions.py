@@ -111,24 +111,24 @@ GOLDEN_QUESTIONS: list[GoldenQuestion] = [
     ),
     # ── Contribution margin ───────────────────────────────────────────────
     GoldenQuestion(
-        question="What is my contribution margin per order this week?",
+        question="What is my contribution margin per order in the last 7 days?",
         description="CM per order 7d — must cite Shopify+Shiprocket join, 5 orders",
         answer_checks=[
             _mentions_any("contribution margin", "margin"),
-            _mentions_any("1063", "1075", "1055", "1004", "1031"),  # order numbers
+            _mentions_any("1075", "1055", "1004", "1031"),  # order numbers in 7d window
         ],
     ),
     GoldenQuestion(
-        question="Which orders had negative contribution margin in the last 7 days?",
-        description="Negative CM — order 1063 has ₹-8.03 margin",
+        question="Which orders had negative contribution margin in the last 14 days?",
+        description="Negative CM 14d — orders 1063 (₹-8.03) and 1027 (₹-43.70)",
         answer_checks=[
-            _mentions_any("1063"),
-            _mentions_any("-8", "−8", "₹-8", "-₹8", "negative margin"),
+            _mentions_any("1063", "1027"),
+            _mentions_any("-8", "−8", "₹-8", "-43", "₹-43", "negative margin"),
         ],
     ),
     GoldenQuestion(
-        question="Which orders had negative contribution margin last month?",
-        description="Negative CM last month — tests Shopify↔Shiprocket join",
+        question="Which orders had negative contribution margin in the last 30 days?",
+        description="Negative CM 30d — tests Shopify↔Shiprocket join",
         answer_checks=[
             _mentions_any("negative", "margin"),
             # Require either a negative rupee amount OR a 4-digit order number (prevents

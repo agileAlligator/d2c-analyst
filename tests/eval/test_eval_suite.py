@@ -85,7 +85,7 @@ class TestCitationCorrectness:
         assert r["all_citations_valid"], f"Issues: {r['issues']}"
 
     def test_contribution_margin_7d(self):
-        r = _run_question("What is my contribution margin per order this week?")
+        r = _run_question("What is my contribution margin per order in the last 7 days?")
         assert r["all_citations_valid"], f"Issues: {r['issues']}"
 
     def test_cac_30d(self):

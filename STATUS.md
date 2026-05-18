@@ -203,7 +203,7 @@ Multi-round parallel Opus audit → Sonnet fix → Opus review loop. Fixes appli
 
 ## v0.1.13 adversarial hardening (round 3 of 5)
 
-- **Shiprocket `_pull_shipments` KeyError** — `shipment['id']` raised `KeyError` on payloads where the primary key is `shipment_id`; changed to `shipment.get('id') or shipment.get('shipment_id')` with explicit `ValueError` when both are absent.
+- **Shiprocket `_pull_shipments` KeyError** — `shipment['id']` raised `KeyError` on payloads where the primary key is `shipment_id`; changed to `sid = shipment.get('id'); if sid is None: sid = shipment.get('shipment_id')` with explicit `ValueError` when both are absent. (`or` was not used — `id=0` is falsy but valid.)
 - **Ingest per-resource isolation** — single exception in any resource loop aborted all subsequent resources for the connector; wrapped each resource's inner loop in `try/except` with `db.rollback()` so sibling resources continue on partial failure.
 - **Margin Watch dead fallback** — `order_id = row.get("order_number") or row.get("order_id")` — the `order_id` fallback was never populated by the `contribution_margin` query; removed dead branch.
 - **Margin Watch courier provenance leak** — `provenance_ids=result.provenance_ids[:5]` cited provenance for ALL couriers on the worst-courier proposal; fixed to `worst.get("provenance_ids", [])[:5]` so the proposal only cites rows for the flagged courier.
@@ -214,12 +214,12 @@ Multi-round parallel Opus audit → Sonnet fix → Opus review loop. Fixes appli
 - **STATUS eval tier claim** — "citation coverage ≥80%" replaced with accurate thresholds (non-adversarial 100%, adversarial ≥66%, accuracy ≥60%) to match `test_eval_suite.py` assertions.
 - **2 new wont_fix entries** (#46–47): ingest cursor advances on data never written; `_post` dead method on `BaseConnector`.
 
-## v0.1.14 adversarial hardening (round 4 of 5)
+## v0.1.13 adversarial hardening (round 4 of 5)
 
 - **CM NULL phantom row** — `contribution_margin` revenue CTE grouped on `order_number` without filtering NULL values; refunds normalized before their parent order collapsed into a synthetic NULL-key row with deeply negative CM near the top of results. Added `AND en.attributes->>'order_number' IS NOT NULL` to revenue CTE.
 - **Meta `date_start` full-timestamp parse failure** — `date + "T00:00:00+00:00"` produced unparseable string when `date_start` was already an ISO timestamp; added `.split("T")[0]` guard to take date-part only, preventing silent ad-spend event drops.
 - **DuckDB `sandboxed_sql` merchant_id injection** — `quoted_mid` was single-quote-escaped but the `merchant_id` parameter itself had no format validation; added `_MERCHANT_ID_RE` regex check (`^[a-zA-Z0-9_-]{1,64}$`) at function entry.
-- **Shiprocket pagination exits early on server-capped `per_page`** — `if len(items) < per_page: break` exited after page 1 when Shiprocket capped items at < 100; removed partial-page check (empty-page break already handles termination correctly).
+- **Shiprocket partial-page removal reverted** — Opus auditor suggested removing `if len(items) < params["per_page"]: break`; removal caused `test_pagination_stops_when_partial_page` to fail — partial-page stopping IS the intended contract. Reverted; documented as wont_fix #54.
 - **Runner unknown resource_type silent drop** — unmapped `resource_type` was silently dropped with no log; added `logger.warning` so operators can detect schema drift without DB-side investigation.
 - **Runner connector list duplication** — `["shopify", "meta_ads", "shiprocket"]` was hardcoded twice; extracted to `_CONNECTOR_CLS` dict and derived `--connector choices` from it.
 - **`config.py` default ports** — default `DATABASE_URL` and `DATABASE_URL_ANALYTICS` used port 5432; changed to 5434 to match `docker-compose.yml` (without `.env`, direct `python3 scripts/...` calls hit wrong port).

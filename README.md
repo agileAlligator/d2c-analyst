@@ -334,7 +334,7 @@ Ports: api `:10001`, ui `:10002`, db `:5434`
 
 ## 8. Hours spent
 
-~48 hours across 6 build days (sessions of 6–10 hours each):
+~52 hours across 6 build days (sessions of 6–10 hours each):
 
 | Phase | Hours | Notes |
 |---|---|---|

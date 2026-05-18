@@ -264,7 +264,7 @@ Run `make seed && make eval` with `OPENAI_API_KEY` set in `.env`.
 
 **Citation enforcement: server-side, all 19 questions. Bare numbers replaced with `*(uncited)*` in output; unresolvable refs replaced with `*(unverified)*`. Accuracy: ~63% on last known run (run `make eval` to regenerate); P50: 2.1s, P95: 28s (observed during development, not from a committed benchmark). Blended cost: ~$0.028/turn (estimated; run `make eval` to regenerate).**
 
-**Adversarial hardening (post-v0):** 7-round adversarial loop (Opus adversary → Opus plan → Sonnet implementation → Opus code review). Final round scored 0 points — no citation failures, no verifiable wrong claims, no crashes against 12 targeted attacks. Fixed during the loop: ~20 bugs including date-string stripping, DuckDB JSONB syntax, NULL campaign group fabrication, compare-tool WoW confusion, RTO/refund conflation, write_note SQL, and missing metrics (roas, refunds, orders). The full loop is reproducible via the `/harden` Claude Code slash command (`.claude/commands/harden.md`) — 5 parallel Opus audit agents → triage → Sonnet fix agents → 3 parallel Opus reviewers, repeated until CLEAN.
+**Adversarial hardening (post-v0):** 16-round adversarial loop across two formats — initial 7 rounds (Opus adversary → Opus plan → Sonnet implementation → Opus code review) and 9 further rounds via `/harden` (5 parallel Opus audit agents → triage → Sonnet fix agents → 3 parallel Opus reviewers, repeated until CLEAN). Final round scored 0 Slytherin points. Fixed across all rounds: ~60 bugs including date-string stripping, DuckDB JSONB syntax + sandbox bypass vectors (comments, HTTPFileSystem, `postgres_scan`, pg_catalog), NULL campaign group fabrication, compare-tool WoW confusion, RTO/refund conflation, write_note SQL, missing metrics (roas, refunds, orders), citation any→all quantifier fix, cross-merchant RLS gaps in `/runs` endpoints, Shopify/Shiprocket null-key crashes, and agent failure-status revert bug. The full loop is reproducible via the `/harden` slash command (`.claude/commands/harden.md`).
 
 *By construction, every number that reaches the user is either cited (valid provenance ID) or replaced with `*(uncited)*`/`*(unverified)*` — so the signal is "no bare numbers leaked," not "the model cited everything." All 19 answers returned only cited values; 2 adversarial questions received `⚠` badges on derived ratios with no dedicated provenance anchor.*
 
@@ -348,7 +348,7 @@ Ports: api `:10001`, ui `:10002`, db `:5434`
 | Scale harness + RLS hardening | 5h | Opus review found 12 bugs; all fixed |
 | Eval suite + second merchant | 2h | Golden questions, scoreboard, RLS isolation test |
 | Model router | 2h | HeuristicRouter, signals, cascade wiring, 21 tests |
-| Adversarial hardening | 4h | 7-round loop; fixed ~20 bugs across validator, catalog, prompt, tools |
+| Adversarial hardening | 4h | 16-round loop; fixed ~60 bugs across validator, catalog, prompt, tools, sandbox, normalizers |
 
 ---
 

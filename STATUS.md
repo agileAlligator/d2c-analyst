@@ -28,7 +28,7 @@
 | Seed data | ✅ | demo: 80 orders, 30d Meta (ROAS 1.27x), 80 shipments; demo2: 5 orders for RLS isolation |
 | RLS hardening | ✅ | d2c_app role (NOSUPERUSER NOBYPASSRLS); NullPool + after_begin listener; GUC enforced end-to-end |
 | Eval suite | ✅ | 19 golden questions (incl. 3 adversarial), non-adversarial citation 100%, adversarial ≥66%, accuracy ≥60% |
-| Adversarial hardening | ✅ | 7-round loop; 0 Slytherin points in final round |
+| Adversarial hardening | ✅ | 16-round loop (7 initial + 9 via /harden); 0 Slytherin points in final round |
 | Connector fixture tests | ✅ | Meta Ads + Shiprocket fixture JSON + 16 offline tests |
 | Bench script | ✅ | scripts/bench_ingest.py; 200 rows at ~335 rows/sec; make bench |
 | Seed determinism | ✅ | BASE_DATE=2026-05-17 anchor; re-seeds produce identical analytical output |
@@ -51,7 +51,7 @@
 - **rto_rate time-window correctness (v0.1.5):** time filter changed from `en.first_seen` (normalize-run timestamp, always ~now) to `ev.occurred_at` (actual RTO date set during normalization), so 7d/14d/30d/90d windows return meaningfully different values on seed data instead of collapsing to "all RTOs are in every window."
 - **contribution_margin includes refunds (v0.1.5):** `_upsert_refund` now resolves `order_number` from the linked order entity and stores it in refund entity attributes; the CM CTE joins on `order_number`, so refunds no longer fall into a NULL group and disappear from per-order CM.
 
-## Adversarial hardening (7 rounds)
+## Adversarial hardening — initial 7 rounds
 
 Fixes applied through iterative adversarial testing (Opus adversary → Opus plan → Sonnet impl → Opus review):
 
